@@ -6,6 +6,8 @@ pub struct Config {
     pub sqlite_path: PathBuf,
     pub frontend_dir: PathBuf,
     pub shutdown_timeout: Duration,
+    pub header_timeout: Duration,
+    pub max_connections: usize,
     pub log_level: tracing::Level,
 }
 
@@ -62,11 +64,23 @@ impl Config {
             }
         };
         let sqlite_path = lookup("SQLITE_PATH")?.unwrap_or_else(|| "data/kitternel.db".into());
-        if sqlite_path.trim().is_empty() || sqlite_path == ":memory:" {
-            return Err(ConfigError(
-                "SQLITE_PATH must name a persistent database file",
-            ));
-        }
+        validate_sqlite_path(PathBuf::from(&sqlite_path).as_path())?;
+        let header_secs = lookup("HTTP_HEADER_TIMEOUT_SECS")?
+            .unwrap_or_else(|| "10".into())
+            .parse::<u64>()
+            .ok()
+            .filter(|seconds| (1..=60).contains(seconds))
+            .ok_or(ConfigError(
+                "HTTP_HEADER_TIMEOUT_SECS must be an integer between 1 and 60",
+            ))?;
+        let max_connections = lookup("MAX_CONNECTIONS")?
+            .unwrap_or_else(|| "128".into())
+            .parse::<usize>()
+            .ok()
+            .filter(|count| (1..=4096).contains(count))
+            .ok_or(ConfigError(
+                "MAX_CONNECTIONS must be an integer between 1 and 4096",
+            ))?;
         let frontend_dir = lookup("FRONTEND_DIR")?.unwrap_or_else(|| "../frontend/dist".into());
         if frontend_dir.trim().is_empty() {
             return Err(ConfigError(
@@ -78,8 +92,24 @@ impl Config {
             frontend_dir: frontend_dir.into(),
             sqlite_path: sqlite_path.into(),
             shutdown_timeout: Duration::from_secs(shutdown_secs),
+            header_timeout: Duration::from_secs(header_secs),
+            max_connections,
             log_level,
         })
+    }
+}
+
+// SQLx opens filenames with SQLITE_OPEN_URI. Only ordinary file paths are supported.
+pub(crate) fn validate_sqlite_path(path: &std::path::Path) -> Result<(), ConfigError> {
+    match path.to_str() {
+        Some(value)
+            if !value.trim().is_empty() && value != ":memory:" && !value.starts_with("file:") =>
+        {
+            Ok(())
+        }
+        _ => Err(ConfigError(
+            "SQLITE_PATH must be an ordinary persistent file path; SQLite URIs are not supported",
+        )),
     }
 }
 
@@ -137,8 +167,32 @@ mod tests {
                 .sqlite_path,
             PathBuf::from("/data/custom.db")
         );
-        for path in ["", "  ", ":memory:"] {
+        for path in [
+            "",
+            "  ",
+            ":memory:",
+            "file::memory:?cache=shared",
+            "file:review?mode=memory&cache=shared",
+            "file:/data/app.db?mode=rwc",
+        ] {
             assert!(config(&[("SQLITE_PATH", path)]).is_err());
+        }
+    }
+
+    #[test]
+    fn http_limits_have_safe_defaults_and_bounded_overrides() {
+        let defaults = config(&[]).unwrap();
+        assert_eq!(defaults.header_timeout, Duration::from_secs(10));
+        assert_eq!(defaults.max_connections, 128);
+        let custom =
+            config(&[("HTTP_HEADER_TIMEOUT_SECS", "3"), ("MAX_CONNECTIONS", "32")]).unwrap();
+        assert_eq!(custom.header_timeout, Duration::from_secs(3));
+        assert_eq!(custom.max_connections, 32);
+        for value in ["0", "61", "-1", "invalid"] {
+            assert!(config(&[("HTTP_HEADER_TIMEOUT_SECS", value)]).is_err());
+        }
+        for value in ["0", "4097", "-1", "invalid"] {
+            assert!(config(&[("MAX_CONNECTIONS", value)]).is_err());
         }
     }
 

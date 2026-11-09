@@ -692,6 +692,8 @@ name = "kitternel-light"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "hyper",
+ "hyper-util",
  "percent-encoding",
  "serde",
  "serde_json",

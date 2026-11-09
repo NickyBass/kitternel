@@ -44,6 +44,8 @@ jobs:
         run: cargo test --locked
       - name: Build
         run: cargo build --locked
+      - name: Incremental migration build regression
+        run: python3 ../../../scripts/migration-build-smoke.py
       - name: HTTP and process smoke tests
         run: python3 ../../../scripts/backend-smoke.py
       - name: Install browser

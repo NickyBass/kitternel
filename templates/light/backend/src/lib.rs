@@ -2,6 +2,7 @@ pub mod config;
 pub mod db;
 mod error;
 mod routes;
+pub mod server;
 mod static_files;
 
 use axum::{

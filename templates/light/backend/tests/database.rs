@@ -76,3 +76,18 @@ async fn incompatible_schema_refuses_startup() {
     pool.close().await;
     assert!(db::connect(&path).await.is_err());
 }
+
+#[tokio::test]
+async fn connection_rejects_sqlite_uris_even_without_environment_configuration() {
+    for value in [
+        ":memory:",
+        "file::memory:?cache=shared",
+        "file:review?mode=memory&cache=shared",
+        "file:/data/app.db?mode=rwc",
+    ] {
+        assert!(matches!(
+            db::connect(std::path::Path::new(value)).await,
+            Err(db::InitError::Configuration(_))
+        ));
+    }
+}

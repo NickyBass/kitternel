@@ -41,7 +41,7 @@ Compose binds only `127.0.0.1` by default; public HTTPS/domain routing belongs t
 
 For a proxy-CA build, first build the image with the explicit secret command above, then use `docker compose up -d --no-build`. The Compose file deliberately has no dependency on a cloud-specific secret path.
 
-The image binds `0.0.0.0:$PORT` (default 8080). Compose fixes the internal port at 8080; changing it requires updating both the environment and port mapping. Runtime paths are `/app/public` for frontend files and `/data/kitternel.db` for SQLite.
+The image binds `0.0.0.0:$PORT` (default 8080). `HTTP_HEADER_TIMEOUT_SECS` defaults to 10 (range 1–60), and `MAX_CONNECTIONS` defaults to 128 (range 1–4096). The HTTP/1 listener uses an explicit header timer, at most 64 headers, and a 32 KiB read buffer; at capacity, new connections wait in the operating system backlog until an active slot is released. These controls complement proxy limits and are not a DoS-resistance guarantee. Compose fixes the internal port at 8080; changing it requires updating both the environment and port mapping. Runtime paths are `/app/public` for frontend files and `/data/kitternel.db` for SQLite.
 
 ## Plain Docker
 
@@ -64,7 +64,7 @@ The runtime UID/GID is `10001:10001`. `/data` in the image is owned by that user
 
 Persist the entire directory, including SQLite WAL/SHM files. The root filesystem is read-only in Compose, with a bounded temporary `/tmp` mount and the explicit writable database volume. Use a local filesystem compatible with SQLite WAL; do not share a WAL database across hosts or use a network filesystem. Keep a single application replica and serialize deployments. Allow a maintenance window; no zero-downtime behavior is promised.
 
-Migrations run before the listener starts, and existing seed data is not overwritten on restart. Back up before schema changes. Restarting an older image does not reverse a migration. Use SQLite's online backup API or another consistent method; copying only a live `.db` file is unsafe. Tested backup/restore procedures and platform deployment guides belong to milestone 5.
+Only ordinary SQLite file paths are supported; `:memory:` and SQLite `file:` URIs are rejected before storage is opened. Migrations run before the listener starts, and existing seed data is not overwritten on restart. Back up before schema changes. Restarting an older image does not reverse a migration. Use SQLite's online backup API or another consistent method; copying only a live `.db` file is unsafe. Tested backup/restore procedures and platform deployment guides belong to milestone 5.
 
 ```sh
 docker compose stop
@@ -82,7 +82,7 @@ The image's health check calls `/health/ready` using curl on the configured inte
 
 Docker health status does not itself restart an unhealthy container. Compose's `unless-stopped` policy restarts exited processes; an orchestrator's unhealthy-container policy must be configured and verified separately. Slow migrations may require adjusting the startup grace period without disabling readiness checks.
 
-The Rust binary is PID 1 and receives SIGTERM directly. It drains HTTP requests for up to ten seconds by default and closes the pool; Compose allows 15 seconds before SIGKILL. If `SHUTDOWN_TIMEOUT_SECS` changes, increase the container/platform grace period accordingly. Inspect `docker compose logs app` and `docker inspect` health/state output for startup or shutdown failures. Never repair a migration failure by deleting production data.
+The Rust binary is PID 1 and receives SIGTERM directly. It drains HTTP requests for up to ten seconds by default and closes the pool; Compose allows 15 seconds before SIGKILL. If `SHUTDOWN_TIMEOUT_SECS` changes, increase the container/platform grace period accordingly. Inspect `docker compose logs app` and `docker inspect` health/state output for startup or shutdown failures. Database initialization failures emit safe stage/category fields, a migration version when available, and a numeric SQLite error code. Consult those fields instead of enabling raw SQL/error-text logging. Never repair a migration failure by deleting production data.
 
 ## Validation
 

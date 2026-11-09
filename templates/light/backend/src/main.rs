@@ -1,6 +1,6 @@
-use kitternel_light::{AppState, app, config::Config, db};
+use kitternel_light::{AppState, app, config::Config, db, server};
 use std::{error::Error, net::Ipv4Addr, process::ExitCode};
-use tokio::{net::TcpListener, sync::oneshot};
+use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -50,22 +50,17 @@ async fn run() -> Result<(), Box<dyn Error>> {
     };
     let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, config.port)).await?;
     tracing::info!(port = config.port, "server listening");
-    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-    let server = axum::serve(listener, app(state)).with_graceful_shutdown(async {
-        let _ = shutdown_rx.await;
-    });
-    let server = std::future::IntoFuture::into_future(server);
-    tokio::pin!(server);
-    tokio::select! {
-        result = &mut server => result?,
-        signal = shutdown_signal => {
-            signal?;
-            tracing::info!("shutdown requested");
-            let _ = shutdown_tx.send(());
-            tokio::time::timeout(config.shutdown_timeout, &mut server)
-                .await.map_err(|_| "graceful shutdown deadline exceeded")??;
-        }
-    }
+    server::serve(
+        listener,
+        app(state),
+        shutdown_signal,
+        server::Settings {
+            header_timeout: config.header_timeout,
+            max_connections: config.max_connections,
+            shutdown_timeout: config.shutdown_timeout,
+        },
+    )
+    .await?;
     pool.close().await;
     tracing::info!("server stopped");
     Ok(())

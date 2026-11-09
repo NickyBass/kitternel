@@ -48,7 +48,9 @@ Liveness checks only the HTTP process; readiness executes a database query with 
 | `PORT` | `8080` | Integer from 1 to 65535 |
 | `LOG_LEVEL` | `info` | `error`, `warn`, `info`, `debug`, `trace` |
 | `SHUTDOWN_TIMEOUT_SECS` | `10` | Integer from 1 to 300 |
-| `SQLITE_PATH` | `data/kitternel.db` | Nonempty persistent file path; `:memory:` is rejected |
+| `HTTP_HEADER_TIMEOUT_SECS` | `10` | Integer from 1 to 60; total time allowed to receive request headers |
+| `MAX_CONNECTIONS` | `128` | Integer from 1 to 4096; maximum active HTTP connections |
+| `SQLITE_PATH` | `data/kitternel.db` | Ordinary persistent file path; empty values, `:memory:`, and `file:` SQLite URIs are rejected |
 | `FRONTEND_DIR` | `../frontend/dist` | Directory containing the compiled `index.html` and assets |
 
 Relative paths resolve from the process working directory. Example:
@@ -57,7 +59,9 @@ Relative paths resolve from the process working directory. Example:
 PORT=8081 SQLITE_PATH=data/example.db cargo run --locked
 ```
 
-`templates/light/.env.example` documents values; the application does not automatically load `.env` files. Invalid configuration exits nonzero without echoing supplied values. Lifecycle logs use JSON on stdout; terminal errors use stderr. Database startup errors identify storage, connection, or migration failure without printing database contents, SQL, or paths. Request headers, bodies, and query strings are not logged. No permissive CORS or forwarded-header trust is enabled.
+`templates/light/.env.example` documents values; the application does not automatically load `.env` files. Invalid configuration exits nonzero without echoing supplied values. Lifecycle logs use JSON on stdout; terminal errors use stderr. Database startup errors emit structured stage/category fields and, where applicable, the migration version and numeric SQLite code. Public messages remain generic; database contents, SQL, paths, and arbitrary database error text are not logged. Request headers, bodies, and query strings are not logged. No permissive CORS or forwarded-header trust is enabled.
+
+The HTTP/1 transport uses an explicit Tokio timer for header deadlines, accepts at most 64 headers within a 32 KiB read buffer, and bounds active connections using `MAX_CONNECTIONS`. At capacity, accepting new connections pauses until a slot is released; the operating system backlog is not an application task queue. Header deadlines are measured per header read, rather than renewed for every byte. These limits bound resources; they are not a throughput or DoS-resistance guarantee.
 
 On Unix, SIGTERM or SIGINT stops accepting connections and drains in-flight requests. Draining beyond the configured deadline exits nonzero. Other platforms use Ctrl+C. The database pool closes after successful HTTP shutdown. Send signals directly to the binary and allow a stop grace period longer than the configured drain deadline.
 
@@ -108,7 +112,7 @@ The suite creates and cleans up only uniquely named disposable test resources, i
 
 The pool has at most four connections and a two-second acquisition timeout. Every connection enables foreign keys and a five-second busy timeout. WAL mode supports concurrent readers; `synchronous=FULL` favors durability. These conservative settings are starting points, not throughput guarantees. SQLite still permits only one writer at a time.
 
-Migrations live in `templates/light/backend/migrations/` and are embedded at compile time. Restarting the application applies pending migrations before serving traffic. Existing migrations are checksum-checked and must not be edited after deployment: add a new reviewed migration and rebuild instead. Initial seed data is inserted by migration only; restarting does not overwrite changes. Migration failures abort startup without resetting the database. Destructive schema changes require a separate reviewed procedure and a verified backup; none are included here.
+Migrations live in `templates/light/backend/migrations/` and are embedded at compile time. Restarting the application applies pending migrations before serving traffic. Existing migrations are checksum-checked and must not be edited after deployment: add a new reviewed migration and rebuild instead. The backend build script watches the migrations directory so adding only a new SQL file also updates incremental builds. Initial seed data is inserted by migration only; restarting does not overwrite changes. Migration failures abort startup without resetting the database. Destructive schema changes require a separate reviewed procedure and a verified backup; none are included here.
 
 Use storage owned by the process user, with access restricted to authorized operators. The parent directory is created when absent, using inherited filesystem permissions; provision restrictive directory permissions/umask for real deployments. Persist the entire database directory, including WAL/SHM files, on a local filesystem. Do not share the WAL database between hosts, use network filesystems, or run overlapping app replicas. Do not commit production data.
 
@@ -134,9 +138,10 @@ cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked
 cargo build --locked
 python3 ../../../scripts/backend-smoke.py
+python3 ../../../scripts/migration-build-smoke.py
 ```
 
-The process smoke suite requires Python 3 and Unix SIGTERM support, with no third-party Python packages. Each test uses temporary storage and the compiled frontend. It checks real HTTP liveness/database data, JSON lifecycle logs, clean SIGTERM exit, invalid configuration, occupied ports, invalid storage, and missing frontend builds. Rust tests check SQLite behavior, bounded readiness, static-file routing, traversal rejection, caching, and security headers.
+The process smoke suite requires Python 3 and Unix SIGTERM support, with no third-party Python packages. Each test uses temporary storage and the compiled frontend. It checks real HTTP liveness/database data, JSON lifecycle logs, clean SIGTERM exit, invalid configuration, occupied ports, invalid storage, missing frontend builds, URI rejection, and safe migration diagnostics. The incremental migration regression builds a temporary backend copy twice, adding only SQL between builds, and verifies the new migration was applied. It reuses downloaded Cargo dependencies offline, requires the normal toolchain/dependencies to be installed first, and leaves the checkout and its target directory untouched. Rust tests check SQLite behavior, bounded readiness, static-file routing, traversal rejection, caching, security headers, slow-header expiry, connection backpressure/recovery, in-flight shutdown draining, and forced shutdown deadlines.
 
 For real-browser tests, install Chromium using Playwright from `templates/light/frontend`:
 
@@ -147,7 +152,7 @@ python3 ../../../scripts/browser-smoke.py
 
 The browser helper starts an isolated real backend on a temporary port with a temporary database, runs Playwright against the production frontend, and stops the backend afterward. No pre-existing server is needed. If system Chromium is already available, use `CHROMIUM_PATH=/path/to/chromium python3 ../../../scripts/browser-smoke.py` instead of downloading another browser. The suite verifies actual database data rendered in the page, client-route fallback, mobile layout, absence of browser errors, and an API failure state. Screenshots are saved to the ignored `frontend/test-results/` directory. `npm run test:e2e` alone targets an already running server at `BASE_URL` (default port 8080).
 
-CI runs the same frontend/Rust checks and isolated browser suite, plus a separate canonical Docker build and container/Compose smoke suite. Cargo and npm lockfiles fix resolved dependencies; update them deliberately alongside compatibility checks. Local validation does not establish that GitHub Actions has run remotely.
+CI runs the same frontend/Rust checks and isolated browser suite, plus a separate canonical Docker build and container/Compose smoke suite. The frontend temporarily overrides `minimatch` to 11.0.5 to address GHSA-g3hv-75wg-m249 in development tooling. Node 24 is supported by that release; lint/typecheck/tests/build have been exercised with the override. Remove it when the parent tools declare a compatible fixed release, then rerun verification. Cargo and npm lockfiles fix resolved dependencies; update them deliberately alongside compatibility checks. Local validation does not establish that GitHub Actions has run remotely.
 
 See [agent instructions](AGENTS.md) before making changes. Keep code and documentation in English; make focused changes with relevant tests. Existing cloud checkouts are already isolated: use them directly rather than creating worktrees unless explicitly requested.
 

@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time", "fs"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time", "fs", "io-util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "json", "std"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
@@ -17,6 +17,8 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 tower-http = { version = "0.6", default-features = false, features = ["fs", "set-header"] }
 tower = { version = "0.5", features = ["util"] }
 percent-encoding = "2"
+hyper = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio", "service"] }
 
 [dev-dependencies]
 tempfile = "3"
