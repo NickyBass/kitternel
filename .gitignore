@@ -1,0 +1,14 @@
+**/target/
+.env
+.env.*
+!.env.example
+**/data/
+**/__pycache__/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+**/node_modules/
+**/dist/
+**/playwright-report/
+**/test-results/

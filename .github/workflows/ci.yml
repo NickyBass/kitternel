@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  light:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: templates/light/backend
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version-file: templates/light/frontend/.node-version
+      - name: Install frontend dependencies
+        working-directory: templates/light/frontend
+        run: npm ci --no-audit --no-fund
+      - name: Frontend checks
+        working-directory: templates/light/frontend
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
+      - name: Install pinned toolchain
+        run: |
+          toolchain=$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)
+          test -n "$toolchain"
+          rustup toolchain install "$toolchain" --profile minimal --component rustfmt --component clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Test
+        run: cargo test --locked
+      - name: Build
+        run: cargo build --locked
+      - name: HTTP and process smoke tests
+        run: python3 ../../../scripts/backend-smoke.py
+      - name: Install browser
+        working-directory: templates/light/frontend
+        run: npx playwright install --with-deps chromium
+      - name: Real backend browser tests
+        run: python3 ../../../scripts/browser-smoke.py
