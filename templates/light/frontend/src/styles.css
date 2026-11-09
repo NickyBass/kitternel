@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+button, a { -webkit-tap-highlight-color: transparent; }
