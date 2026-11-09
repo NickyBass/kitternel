@@ -4,9 +4,11 @@ import argparse
 import importlib.util
 import json
 import sqlite3
+import subprocess
 import tempfile
 from pathlib import Path
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("docker_smoke", Path(__file__).with_name("docker-smoke.py"))
 base = importlib.util.module_from_spec(spec)
@@ -26,17 +28,26 @@ class SQLiteBackupSmoke(unittest.TestCase):
             self.volumes.append(volume)
 
     def cleanup(self):
-        self.fixture.doCleanups()
+        failures = []
+        if not self.fixture.doCleanups():
+            failures.append("Primary Docker fixture cleanup failed")
+        # Attempt every extra volume even when an earlier cleanup failed.
         for volume in self.volumes:
-            result = base.docker("volume", "rm", volume, check=False)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            try:
+                result = base.docker("volume", "rm", volume, check=False)
+                if result.returncode:
+                    failures.append(f"Volume cleanup failed for {volume}: {result.stderr}")
+            except (OSError, subprocess.SubprocessError) as error:
+                failures.append(f"Volume cleanup raised {type(error).__name__} for {volume}")
+        self.assertFalse(failures, "\n".join(failures))
 
-    def helper(self, command, snapshot, volume, check=True):
+    def helper(self, command, snapshot, volume, check=True, database_path=None):
+        options = [] if database_path is None else ["--env", f"SQLITE_PATH={database_path}"]
         return base.docker("run", "--rm", "--read-only", "--no-healthcheck", "--network", "none", "--cap-drop", "ALL",
                            "--security-opt", "no-new-privileges:true", "--tmpfs", "/tmp:size=32m,mode=1777",
                            "--mount", f"source={volume},target=/data",
                            "--mount", f"source={self.backups},target=/backups" + (",readonly" if command == "sqlite-restore" else ""),
-                           "--entrypoint", f"/app/{command}", base.IMAGE, snapshot, check=check)
+                           *options, "--entrypoint", f"/app/{command}", base.IMAGE, snapshot, check=check)
 
     def snapshot_query(self, sql):
         return base.docker("run", "--rm", "--read-only", "--network", "none",
@@ -90,6 +101,58 @@ class SQLiteBackupSmoke(unittest.TestCase):
         self.fixture.stop_cleanly(restored_name)
         self.fixture.stop_cleanly(name)
 
+    def test_foreign_key_query_errors_abort_backup_and_restore(self):
+        # Valid SQLite pages but an invalid FK definition: the check raises instead of returning a violation row.
+        base.docker("run", "--rm", "--network", "none", "--entrypoint", "sqlite3",
+                    "--mount", f"source={self.fixture.volume},target=/data", base.IMAGE,
+                    "/data/kitternel.db", "CREATE TABLE parent(id INTEGER); CREATE TABLE child(parent_id INTEGER REFERENCES parent(id));")
+        failed = self.helper("sqlite-backup", "rejected.sqlite", self.fixture.volume, check=False)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn("foreign key check could not be completed", failed.stderr)
+        self.assertNotIn("Snapshot created", failed.stdout)
+        base.docker("run", "--rm", "--read-only", "--network", "none", "--entrypoint", "test",
+                    "--mount", f"source={self.backups},target=/backups", base.IMAGE,
+                    "!", "-e", "/backups/rejected.sqlite")
+        # Copy only a closed synthetic fixture to test restore rejection independently of the backup guard.
+        base.docker("run", "--rm", "--read-only", "--network", "none", "--entrypoint", "cp",
+                    "--mount", f"source={self.fixture.volume},target=/data,readonly",
+                    "--mount", f"source={self.backups},target=/backups", base.IMAGE,
+                    "/data/kitternel.db", "/backups/malformed.sqlite")
+        failed = self.helper("sqlite-restore", "malformed.sqlite", self.restored, check=False)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn("foreign key check could not be completed", failed.stderr)
+        self.assertNotIn("Database restored", failed.stdout)
+        base.docker("run", "--rm", "--read-only", "--network", "none", "--entrypoint", "test",
+                    "--mount", f"source={self.restored},target=/data", base.IMAGE,
+                    "!", "-e", "/data/kitternel.db")
+
+    def test_nested_paths_persist_and_symlinked_parents_are_rejected(self):
+        base.docker("run", "--rm", "--network", "none", "--entrypoint", "sqlite3",
+                    "--mount", f"source={self.backups},target=/backups", base.IMAGE,
+                    "/backups/valid.sqlite", "CREATE TABLE recovery_probe(value TEXT); INSERT INTO recovery_probe VALUES ('persistent data');")
+        base.docker("run", "--rm", "--network", "none", "--entrypoint", "sh",
+                    "--mount", f"source={self.restored},target=/data", base.IMAGE,
+                    "-c", "mkdir /data/real && ln -s /tmp /data/escape && ln -s /data/real /data/alias")
+        for parent in ("escape", "alias"):
+            failed = self.helper("sqlite-restore", "valid.sqlite", self.restored, check=False,
+                                 database_path=f"/data/{parent}/restored.db")
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("Database parent", failed.stderr)
+            self.assertNotIn("Database restored", failed.stdout)
+        base.docker("run", "--rm", "--network", "none", "--entrypoint", "ln",
+                    "--mount", f"source={self.fixture.volume},target=/data", base.IMAGE,
+                    "-s", "/backups", "/data/source-alias")
+        failed = self.helper("sqlite-backup", "rejected.sqlite", self.fixture.volume, check=False,
+                             database_path="/data/source-alias/valid.sqlite")
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn("Database parent", failed.stderr)
+        self.helper("sqlite-restore", "valid.sqlite", self.restored, database_path="/data/real/restored.db")
+        value = base.docker("run", "--rm", "--read-only", "--network", "none", "--entrypoint", "sqlite3",
+                            "--mount", f"source={self.restored},target=/data,readonly", base.IMAGE,
+                            "-readonly", "/data/real/restored.db", "SELECT value FROM recovery_probe;")
+        self.assertEqual(value.stdout.strip(), "persistent data")
+        self.helper("sqlite-backup", "nested-copy.sqlite", self.restored, database_path="/data/real/restored.db")
+
     def test_missing_corrupt_or_unsafe_inputs_fail_without_creating_a_database(self):
         missing = self.helper("sqlite-backup", "missing.sqlite", self.fixture.volume, check=False)
         self.assertNotEqual(missing.returncode, 0)
@@ -116,6 +179,39 @@ class SQLiteBackupSmoke(unittest.TestCase):
         orphan = self.helper("sqlite-restore", "corrupt.sqlite", self.restored, check=False)
         self.assertNotEqual(orphan.returncode, 0)
         self.assertIn("Target database or sidecar exists", orphan.stderr)
+
+
+class CleanupPropagationTests(unittest.TestCase):
+    def test_nested_cleanup_failure_fails_outer_test_and_still_attempts_extra_volumes(self):
+        wrapper = SQLiteBackupSmoke()
+        wrapper.fixture = base.DockerSmoke()
+        wrapper.volumes = ["first-extra", "second-extra"]
+        def failed_cleanup():
+            raise RuntimeError("simulated nested cleanup failure")
+        wrapper.fixture.addCleanup(failed_cleanup)
+        outer = unittest.FunctionTestCase(lambda: None)
+        outer.addCleanup(wrapper.cleanup)
+        result = unittest.TestResult()
+        with mock.patch.object(base, "docker", return_value=subprocess.CompletedProcess([], 0, "", "")) as remove:
+            outer.run(result)
+        self.assertFalse(result.wasSuccessful())
+        self.assertEqual(len(result.failures), 1)
+        self.assertIn("Primary Docker fixture cleanup failed", result.failures[0][1])
+        self.assertEqual(remove.call_count, 2)
+
+    def test_volume_cleanup_exception_does_not_skip_remaining_volumes(self):
+        wrapper = SQLiteBackupSmoke()
+        wrapper.fixture = base.DockerSmoke()
+        wrapper.volumes = ["first-extra", "second-extra"]
+        outer = unittest.FunctionTestCase(lambda: None)
+        outer.addCleanup(wrapper.cleanup)
+        result = unittest.TestResult()
+        with mock.patch.object(base, "docker", side_effect=[subprocess.TimeoutExpired("docker", 90), subprocess.CompletedProcess([], 0, "", "")]) as remove:
+            outer.run(result)
+        self.assertFalse(result.wasSuccessful())
+        self.assertEqual(len(result.failures), 1)
+        self.assertIn("TimeoutExpired", result.failures[0][1])
+        self.assertEqual(remove.call_count, 2)
 
 
 if __name__ == "__main__":

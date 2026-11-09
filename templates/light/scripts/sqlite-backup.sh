@@ -9,6 +9,11 @@ case "$snapshot" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) fail 'Snapshot name must
 database=${SQLITE_PATH:-/data/kitternel.db}
 case "$database" in /data/*) ;; *) fail 'SQLITE_PATH must be an absolute ordinary file path below /data.' ;; esac
 case "$database" in *'/../'*|*'/./'*|*/..|*/.) fail 'SQLITE_PATH must not contain dot path components.' ;; esac
+# Require canonical parents: a lexical /data prefix does not exclude symlink escapes.
+parent=$(dirname "$database")
+resolved_parent=$(realpath -e -- "$parent") || fail 'Database parent directory must already exist.'
+case "$resolved_parent" in /data|/data/*) ;; *) fail 'Database parent must resolve below /data.' ;; esac
+[ "$resolved_parent" = "$parent" ] || fail 'Database parent must not contain symlinks or non-canonical components.'
 [ -f "$database" ] && [ ! -L "$database" ] || fail 'Source database must be an existing regular file, not a symlink.'
 [ -d /backups ] && [ -w /backups ] || fail 'Mount an independently managed writable backup volume at /backups.'
 destination=/backups/$snapshot
@@ -19,11 +24,14 @@ trap cleanup 0
 trap 'exit 1' HUP INT TERM
 sqlite3 -readonly -bail "$database" '.timeout 5000' ".backup '$temporary'"
 # The snapshot must remain usable as one file after export, without WAL sidecars.
-[ "$(sqlite3 -bail "$temporary" 'PRAGMA journal_mode=DELETE;')" = delete ] || fail 'Could not finalize the snapshot journal.'
-[ "$(sqlite3 -readonly -bail "$temporary" 'PRAGMA integrity_check;')" = ok ] || fail 'Snapshot integrity check failed.'
-[ -z "$(sqlite3 -readonly -bail "$temporary" 'SELECT 1 FROM pragma_foreign_key_check LIMIT 1;')" ] || fail 'Snapshot foreign key check failed.'
+journal_mode=$(sqlite3 -bail "$temporary" 'PRAGMA journal_mode=DELETE;') || fail 'Could not finalize the snapshot journal.'
+[ "$journal_mode" = delete ] || fail 'Could not finalize the snapshot journal.'
+integrity_result=$(sqlite3 -readonly -bail "$temporary" 'PRAGMA integrity_check;') || fail 'Snapshot integrity check failed.'
+[ "$integrity_result" = ok ] || fail 'Snapshot integrity check failed.'
+foreign_key_result=$(sqlite3 -readonly -bail "$temporary" 'SELECT 1 FROM pragma_foreign_key_check() LIMIT 1;') || fail 'Snapshot foreign key check could not be completed.'
+[ -z "$foreign_key_result" ] || fail 'Snapshot foreign key check failed.'
 sync -f "$temporary"
 # Atomic no-clobber publication, including concurrent backup invocations.
-ln "$temporary" "$destination"
+ln -T -- "$temporary" "$destination"
 sync -f /backups
 printf 'Snapshot created: /backups/%s\n' "$snapshot"

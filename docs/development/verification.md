@@ -49,3 +49,13 @@ After changing the source data again, it restored the earlier snapshot into a di
 - Authentication, authorization, sessions/CSRF protection, and Advanced/PostgreSQL are outside the initial Light foundation and were not implemented or tested.
 
 Use [CONTRIBUTING.md](../../CONTRIBUTING.md) for repeatable commands, the [Docker guide](../deployment/docker.md) for image setup, and the [backup/restore guide](../deployment/backup-restore.md) for operational prerequisites and cutover boundaries. Update this record when new evidence exists; do not convert documented configuration into a deployment-success claim.
+
+## Post-review recovery corrections
+
+Recorded on 2026-11-09 against milestone 5 commit `b044a53151e03dbf17e41bed9862569c0ec481a4`. Only recovery helpers, their smoke runner, and documentation changed; application code, migrations, and dependency lockfiles were unchanged.
+
+Two new regressions failed against the original milestone image: foreign-key query execution errors were treated as successful checks, and restore accepted symlinked parent directories. Helpers now check SQLite exit status separately from result contents and require canonical existing database parent directories below `/data`. Publication explicitly treats its destination as a file. The smoke runner now propagates nested cleanup failures and continues attempting remaining volume removals.
+
+The corrected canonical image built successfully as `kitternel-light:recovery-fixes`. `python3 scripts/sqlite-backup-smoke.py --image kitternel-light:recovery-fixes -v` passed all six tests: four Docker recovery tests and two isolated cleanup-failure simulations. Coverage includes both backup and restore rejection of malformed foreign-key schemas, symlinked parents inside/outside `/data`, ordinary nested-path persistence, and the existing live-WAL recovery drill. `python3 scripts/docker-smoke.py --image kitternel-light:recovery-fixes -v` passed all five Docker/Compose tests. Both helper scripts passed `sh -n`, and `git diff --check` passed. Disposable Docker test resources were removed.
+
+Rust/frontend suites were not rerun for these script/documentation changes. The cleanup failures were simulated, not failures of the Docker daemon. No remote CI result or actual platform deployment is claimed.
