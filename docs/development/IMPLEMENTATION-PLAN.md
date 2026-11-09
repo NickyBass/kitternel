@@ -1,12 +1,12 @@
 # Kitternel Light implementation proposal
 
-Status: architecture approved; milestones 1–4 implemented. Work proceeds one milestone at a time, with a review checkpoint before starting milestone 5. The structure below describes the target foundation.
+Status: architecture approved; milestones 1–5 implemented, including review remediation. The initial Light foundation is complete; later hardening/Advanced stages remain separate tasks. Actual platform deployments remain unverified. The structure below describes the target foundation.
 
 ## Repository findings and scope
 
 Initial planning inspected main at `5c632c2`, including AGENTS.md, START-HERE.md, LICENSE, and the first-task prompt. At that point there was no application, dependency manifest, CI, or test suite. The existing MIT license names NickyBass; preserve it rather than replacing it with a placeholder.
 
-The initial request was planning only; the user subsequently approved milestone 1, then requested further work with an explicit constraint to proceed one milestone at a time. The user subsequently authorized milestones 3 and 4 individually; the current implementation stops at milestone 4. The first-task prompt has been moved into this directory.
+The initial request was planning only; the user subsequently approved milestone 1, then requested further work with an explicit constraint to proceed one milestone at a time. The user subsequently authorized milestones 3 and 4 individually; milestone 5 was subsequently authorized for contributor/deployment handoff. The first-task prompt has been moved into this directory.
 
 Light comes first: one Rust/Axum application, SQLite, and React/TypeScript. Advanced follows only after Light is stable and separately authorized. No authentication, RBAC, email, queues, Redis, microservices, Kubernetes, AI CLI, or PostgreSQL in this foundation.
 
@@ -137,7 +137,7 @@ Advanced remains a separately deployable starter under `templates/advanced` in a
 
 ## Review checkpoint
 
-Review each completed milestone before moving to the next. Milestone 4 is the current delivery; milestone 5 (complete contributor/platform documentation and tested backup/restore) has not been included. Authentication and Advanced remain separate later-stage tasks.
+Review each completed milestone before moving to the next. Milestone 5 is the current delivery. Review the handoff and verification boundaries before planning authentication/authorization hardening or Advanced. Authentication and Advanced remain separate later-stage tasks.
 
 ## Milestone 1 validation
 
@@ -201,3 +201,15 @@ The full-code review identified four issues, addressed without advancing to mile
 The development-only minimatch advisory GHSA-g3hv-75wg-m249 is addressed with an explicit override to maintained minimatch 11.0.5 while retaining ESLint 10. Existing frontend checks exercise the override. Remove it once the parent tools support a fixed version directly. No migration SQL was changed and no deployed database needs rewriting for these fixes.
 
 Review fixes were verified with formatting, Clippy with warnings denied, 21 Rust tests, a locked backend build, seven process smoke tests, and the isolated incremental-migration build regression. Frontend locked installation, typecheck, lint, five component tests, production build, and two real-backend browser tests passed. The final Docker image was rebuilt from the corrected source and passed all five Docker/Compose smoke tests; disposable test resources were removed. A full npm audit after the minimatch override reported zero vulnerabilities. GitHub Actions has not been run remotely for these changes, no deployment was performed, and Rust advisory scanning with cargo-audit was not part of this validation.
+
+## Milestone 5 decisions
+
+Added contributor/security policies, linked feature/roadmap status, dedicated Dokploy/Coolify/troubleshooting guides, and explicit verification evidence. Platform settings were researched in pinned official documentation repositories because this cloud's network blocked the documentation sites. No platform credentials, actual server, DNS/TLS issuance, or zero-downtime deployment was exercised; proposed settings remain clearly unverified until a real-instance test.
+
+Backup/restore helpers reuse the existing SQLite CLI in the canonical image. They use the online backup API, normalize a private snapshot to DELETE journal mode for single-file export, check integrity and foreign keys, and atomically publish with no-overwrite hard links. Temporary output is on the destination volume rather than the application's small tmpfs. The runtime image adds a separate UID/GID 10001-owned `/backups` directory; that volume is mounted only into offline/network-disabled helper containers, not the running app. Restore requires a fresh target path and refuses existing database/sidecar files. Backups are not encrypted or uploaded automatically; off-host protection, retention, and RPO/RTO remain operator responsibilities.
+
+The local recovery drill validates non-seed data from a live WAL database, independent export, migration metadata, source changes after the snapshot, restore into a different volume, application reads, and refusal of unsafe/corrupt/occupied inputs. CI includes that drill alongside the existing application, browser, migration-build, and Docker gates. Application Rust/frontend logic, migration SQL, and lockfiles are unchanged in this milestone.
+
+## Milestone 5 validation
+
+A fresh GitHub clone at application commit 41b5cf0 passed locked frontend installation, typecheck/lint, five component tests, production build, Rust formatting/Clippy, 21 Rust tests, locked build, seven native process tests, the incremental-migration regression, and two real-backend browser tests. The documented cargo run command was also exercised with default storage/frontend paths. The milestone Docker image built successfully and passed five Docker/Compose checks; the final backup helpers passed two tests covering live WAL data, standalone export, independent restore, application reads, and rejection cases. The [verification record](verification.md) preserves versions, source provenance, exact scope, and unverified areas. GitHub Actions API access returned Forbidden, so no remote CI result is claimed. No actual Dokploy/Coolify deployment, production operation, off-host backup service, or later-stage feature was performed.

@@ -65,3 +65,5 @@ jobs:
         run: docker build -t kitternel-light:local templates/light
       - name: Docker and Compose smoke tests
         run: python3 scripts/docker-smoke.py --image kitternel-light:local
+      - name: Consistent SQLite backup and restore drill
+        run: python3 scripts/sqlite-backup-smoke.py --image kitternel-light:local

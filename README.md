@@ -4,12 +4,32 @@ An open-source, AI-native Rust web development toolkit focused on small, maintai
 
 ## Current status
 
-Light milestones 1–4 provide a Rust/Axum backend with SQLite and a responsive React/TypeScript frontend. One application process serves the built frontend, API, and health endpoints. Configuration validation, JSON lifecycle logs, versioned migrations, a persistent greeting, and bounded graceful shutdown are included. A canonical Docker image and Compose configuration are included. Platform-specific deployments and tested backup/restore procedures remain planned. Authentication and authorization are not provided. This is not a production-ready starter yet.
+Light milestones 1–5 provide a Rust/Axum backend with SQLite and a responsive React/TypeScript frontend. One application process serves the built frontend, API, and health endpoints. Configuration validation, JSON lifecycle logs, versioned migrations, a persistent greeting, and bounded graceful shutdown are included. A canonical Docker image and Compose configuration are included. Contributor/security documentation, platform configuration guides, and tested local backup/restore helpers are included. Real Dokploy/Coolify deployments remain unverified. Authentication and authorization are not provided. This is not a production-ready starter yet.
 
 - **Light:** Rust, Axum, SQLite, React, TypeScript.
 - **Advanced (later):** Rust, Axum, PostgreSQL, React, TypeScript.
 
-See the [implementation plan](docs/development/IMPLEMENTATION-PLAN.md) for architecture, acceptance criteria, and trade-offs. Work proceeds one milestone at a time.
+See the [implementation plan](docs/development/IMPLEMENTATION-PLAN.md) for architecture, acceptance criteria, and trade-offs. The initial Light foundation is implemented. Authentication/authorization hardening and Advanced remain later stages, with separate design and approval.
+
+## Guides and feature status
+
+- [Contributing](CONTRIBUTING.md): prerequisites, local workflow, required checks, and migration rules.
+- [Security policy](SECURITY.md): current boundaries and sensitive reporting.
+- [Docker](docs/deployment/docker.md), [Dokploy](docs/deployment/dokploy.md), [Coolify](docs/deployment/coolify.md).
+- [Backup and restore](docs/deployment/backup-restore.md), [troubleshooting](docs/deployment/troubleshooting.md), [verification record](docs/development/verification.md).
+
+| Capability | Status |
+| --- | --- |
+| Axum + SQLite API, React/TypeScript/Tailwind UI | Implemented and tested locally |
+| HTTP limits, safe configuration, structured diagnostics | Implemented with regression tests |
+| Canonical Docker image and persistent Compose storage | Implemented and tested on Linux/amd64 |
+| Consistent SQLite snapshot/export/restore to a fresh volume | Implemented; local Docker drill exercised |
+| Dokploy and Coolify settings | Documented from official sources; real deployments unverified |
+| GitHub Actions | Configured; remote run status must be checked on GitHub |
+| Authentication, authorization, sessions, CSRF | Later hardening stage; not implemented |
+| Advanced / PostgreSQL | Later stage; not implemented |
+
+No one-click deployment, zero-downtime, recovery-time, capacity, or production-readiness guarantee is made. See the verification record for the scope of actual checks.
 
 ## Quick start
 
@@ -104,6 +124,7 @@ After building, run the container checks from the repository root:
 
 ```sh
 python3 scripts/docker-smoke.py --image kitternel-light:local
+python3 scripts/sqlite-backup-smoke.py --image kitternel-light:local
 ```
 
 The suite creates and cleans up only uniquely named disposable test resources, including a separate Compose project. Never delete the deployment's data volume as part of an upgrade or troubleshooting step.
@@ -116,7 +137,7 @@ Migrations live in `templates/light/backend/migrations/` and are embedded at com
 
 Use storage owned by the process user, with access restricted to authorized operators. The parent directory is created when absent, using inherited filesystem permissions; provision restrictive directory permissions/umask for real deployments. Persist the entire database directory, including WAL/SHM files, on a local filesystem. Do not share the WAL database between hosts, use network filesystems, or run overlapping app replicas. Do not commit production data.
 
-Do not copy only the live `.db` file to create a backup. Use SQLite's online backup API or a safe equivalent and verify restoration. Container operation is documented in the Docker guide. Tested backup/restore and platform-specific procedures remain for milestone 5.
+Do not copy only the live `.db` file to create a backup. Use SQLite's online backup API or a safe equivalent and verify restoration. Container operation is documented in the Docker guide. Use the [backup/restore procedure](docs/deployment/backup-restore.md) for the tested local drill; platform settings and their unverified deployment status are documented separately.
 
 ## Verification
 
@@ -152,7 +173,7 @@ python3 ../../../scripts/browser-smoke.py
 
 The browser helper starts an isolated real backend on a temporary port with a temporary database, runs Playwright against the production frontend, and stops the backend afterward. No pre-existing server is needed. If system Chromium is already available, use `CHROMIUM_PATH=/path/to/chromium python3 ../../../scripts/browser-smoke.py` instead of downloading another browser. The suite verifies actual database data rendered in the page, client-route fallback, mobile layout, absence of browser errors, and an API failure state. Screenshots are saved to the ignored `frontend/test-results/` directory. `npm run test:e2e` alone targets an already running server at `BASE_URL` (default port 8080).
 
-CI runs the same frontend/Rust checks and isolated browser suite, plus a separate canonical Docker build and container/Compose smoke suite. The frontend temporarily overrides `minimatch` to 11.0.5 to address GHSA-g3hv-75wg-m249 in development tooling. Node 24 is supported by that release; lint/typecheck/tests/build have been exercised with the override. Remove it when the parent tools declare a compatible fixed release, then rerun verification. Cargo and npm lockfiles fix resolved dependencies; update them deliberately alongside compatibility checks. Local validation does not establish that GitHub Actions has run remotely.
+CI runs the same frontend/Rust checks and isolated browser suite, plus a separate canonical Docker build, container/Compose smoke suite, and consistent SQLite backup/export/restore drill. The frontend temporarily overrides `minimatch` to 11.0.5 to address GHSA-g3hv-75wg-m249 in development tooling. Node 24 is supported by that release; lint/typecheck/tests/build have been exercised with the override. Remove it when the parent tools declare a compatible fixed release, then rerun verification. Cargo and npm lockfiles fix resolved dependencies; update them deliberately alongside compatibility checks. Local validation does not establish that GitHub Actions has run remotely.
 
 See [agent instructions](AGENTS.md) before making changes. Keep code and documentation in English; make focused changes with relevant tests. Existing cloud checkouts are already isolated: use them directly rather than creating worktrees unless explicitly requested.
 

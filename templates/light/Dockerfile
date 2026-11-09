@@ -21,10 +21,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 kitternel \
     && useradd --uid 10001 --gid kitternel --no-create-home --shell /usr/sbin/nologin kitternel \
-    && install -d -o kitternel -g kitternel -m 0750 /data
+    && install -d -o kitternel -g kitternel -m 0750 /data /backups
 WORKDIR /app
 COPY --from=backend /build/backend/target/release/kitternel-light /app/kitternel-light
 COPY --from=frontend /build/frontend/dist /app/public
+COPY --chmod=755 scripts/sqlite-backup.sh /app/sqlite-backup
+COPY --chmod=755 scripts/sqlite-restore.sh /app/sqlite-restore
 ENV PORT=8080 LOG_LEVEL=info SHUTDOWN_TIMEOUT_SECS=10 SQLITE_PATH=/data/kitternel.db FRONTEND_DIR=/app/public
 USER 10001:10001
 EXPOSE 8080

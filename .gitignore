@@ -12,3 +12,6 @@
 **/dist/
 **/playwright-report/
 **/test-results/
+**/backups/
+*.sqlite3
+*.sqlite3-*

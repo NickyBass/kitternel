@@ -1,6 +1,6 @@
 # Light with Docker
 
-This guide covers one application container on one Linux host. PostgreSQL, multiple app replicas, and platform-specific routing are outside this milestone. Run these commands from the repository root unless noted otherwise.
+This guide covers one application container on one Linux host. PostgreSQL and multiple app replicas are outside the Light foundation. Platform-specific routing is documented in the separate Dokploy/Coolify guides and remains unverified on real instances. Run these commands from the repository root unless noted otherwise.
 
 ## Build
 
@@ -64,7 +64,7 @@ The runtime UID/GID is `10001:10001`. `/data` in the image is owned by that user
 
 Persist the entire directory, including SQLite WAL/SHM files. The root filesystem is read-only in Compose, with a bounded temporary `/tmp` mount and the explicit writable database volume. Use a local filesystem compatible with SQLite WAL; do not share a WAL database across hosts or use a network filesystem. Keep a single application replica and serialize deployments. Allow a maintenance window; no zero-downtime behavior is promised.
 
-Only ordinary SQLite file paths are supported; `:memory:` and SQLite `file:` URIs are rejected before storage is opened. Migrations run before the listener starts, and existing seed data is not overwritten on restart. Back up before schema changes. Restarting an older image does not reverse a migration. Use SQLite's online backup API or another consistent method; copying only a live `.db` file is unsafe. Tested backup/restore procedures and platform deployment guides belong to milestone 5.
+Only ordinary SQLite file paths are supported; `:memory:` and SQLite `file:` URIs are rejected before storage is opened. Migrations run before the listener starts, and existing seed data is not overwritten on restart. Back up before schema changes. Restarting an older image does not reverse a migration. Use SQLite's online backup API or another consistent method; copying only a live `.db` file is unsafe. Use the [backup/restore guide](backup-restore.md) for the tested local snapshot/export/restore workflow and the [Dokploy](dokploy.md)/[Coolify](coolify.md) guides for proposed platform configuration.
 
 ```sh
 docker compose stop
@@ -90,8 +90,9 @@ Build the image, then run the isolated smoke suite from the repository root:
 
 ```sh
 python3 scripts/docker-smoke.py --image kitternel-light:local
+python3 scripts/sqlite-backup-smoke.py --image kitternel-light:local
 ```
 
 The suite owns uniquely named disposable containers and volumes. It tests frontend assets/API/health responses, a non-default port, the bundled Docker health check, non-root/read-only operation, graceful SIGTERM, persisted data after recreation, and clear failures for missing/read-only storage or incompatible volume permissions. It never uses the Compose deployment's data volume and removes only its own test resources.
 
-Validation in this task used Docker 29.9.2 and Compose 2.40.3 on Linux/amd64. The image built successfully with the cloud proxy CA supplied, and a subsequent build reused the Docker layer cache. All five Docker/Compose smoke tests passed; test resources were removed. The same commands are configured in GitHub Actions, but that workflow has not been executed remotely for these changes. ARM builds, Dokploy, Coolify, backup/restore, and production deployment have not been verified in this milestone.
+Validation in this task used Docker 29.9.2 and Compose 2.40.3 on Linux/amd64. The image built successfully with the cloud proxy CA supplied, and a subsequent build reused the Docker layer cache. All five Docker/Compose smoke tests passed; test resources were removed. The same commands are configured in GitHub Actions, but that workflow has not been executed remotely for these changes. At the milestone 4 checkpoint, ARM builds, Dokploy, Coolify, backup/restore, and production deployment had not been verified. Milestone 5 adds tested local backup/restore helpers; consult the [current verification record](../development/verification.md) for the updated evidence boundary.
