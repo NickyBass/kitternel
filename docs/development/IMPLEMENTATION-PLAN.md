@@ -1,12 +1,12 @@
 # Kitternel Light implementation proposal
 
-Status: architecture approved; milestones 1–3 implemented. Work proceeds one milestone at a time, with a review checkpoint before starting milestone 4. The structure below describes the target foundation.
+Status: architecture approved; milestones 1–4 implemented. Work proceeds one milestone at a time, with a review checkpoint before starting milestone 5. The structure below describes the target foundation.
 
 ## Repository findings and scope
 
 Initial planning inspected main at `5c632c2`, including AGENTS.md, START-HERE.md, LICENSE, and the first-task prompt. At that point there was no application, dependency manifest, CI, or test suite. The existing MIT license names NickyBass; preserve it rather than replacing it with a placeholder.
 
-The initial request was planning only; the user subsequently approved milestone 1, then requested further work with an explicit constraint to proceed one milestone at a time. The user subsequently authorized milestone 3; the current implementation stops at milestone 3. The first-task prompt has been moved into this directory.
+The initial request was planning only; the user subsequently approved milestone 1, then requested further work with an explicit constraint to proceed one milestone at a time. The user subsequently authorized milestones 3 and 4 individually; the current implementation stops at milestone 4. The first-task prompt has been moved into this directory.
 
 Light comes first: one Rust/Axum application, SQLite, and React/TypeScript. Advanced follows only after Light is stable and separately authorized. No authentication, RBAC, email, queues, Redis, microservices, Kubernetes, AI CLI, or PostgreSQL in this foundation.
 
@@ -137,7 +137,7 @@ Advanced remains a separately deployable starter under `templates/advanced` in a
 
 ## Review checkpoint
 
-Review each completed milestone before moving to the next. Milestone 3 is the current delivery; milestone 4 (Docker and persistence smoke tests) has not been included. Authentication and Advanced remain separate later-stage tasks.
+Review each completed milestone before moving to the next. Milestone 4 is the current delivery; milestone 5 (complete contributor/platform documentation and tested backup/restore) has not been included. Authentication and Advanced remain separate later-stage tasks.
 
 ## Milestone 1 validation
 
@@ -168,3 +168,23 @@ The CI now includes locked npm installation, typechecking, lint, component tests
 Verified locally with Rust 1.99.1, Node 24.22.1, npm 11.9.0, and system Chromium: frozen npm installation, TypeScript checks, ESLint without warnings, five component tests, and production frontend build passed. Rust formatting, Clippy with warnings denied, 15 Rust tests, locked backend build, five process smoke tests, and two real-backend Playwright tests passed. An additional browser check exercised Vite's development proxy: the database greeting rendered, readiness returned 200, and an unknown API path returned 404 with HTML Accept headers. Desktop/mobile screenshots were captured; the browser reported no application or console errors on the healthy production page. Initial route regressions (an obsolete root-404 expectation and an asset-directory redirect) were corrected and the affected checks rerun.
 
 GitHub Actions has been updated but not run remotely. No Docker build, public preview, platform deployment, backup/restore, or authentication claim is made. The cloud backend was restarted with compiled frontend assets for inspection; this running process is temporary and is not a deployment.
+
+## Milestone 4 decisions
+
+Delivered one canonical multi-stage Dockerfile at `templates/light/Dockerfile`, with build context `templates/light`, a pinned BuildKit frontend, pinned Node/Rust/Debian image digests, locked package installs, and a stripped release binary. Four Cargo build jobs bound parallel compilation. The builder explicitly invokes the preinstalled Rust 1.99.1 toolchain, avoiding automatic downloads of rustfmt/Clippy from the development toolchain file. Optional BuildKit CA secrets support npm/Cargo behind the cloud proxy while preserving TLS verification; no session certificate is copied into image layers.
+
+The runtime includes only the application, frontend assets, a minimal Debian base, CA roots, curl for health probes, and sqlite3 for operator diagnostics and test data preparation. Runtime UID/GID is 10001; there is no root entrypoint or automatic host-directory permission repair. Compose enables a read-only application filesystem, bounded temporary storage, dropped capabilities, no-new-privileges, a named `/data` volume, and loopback-only host port publishing. No reverse-proxy service is introduced.
+
+Storage lifecycle is explicit: no anonymous volume is declared, and the documented Docker command requires a named mount. The supported read-only command fails if that mount is absent. Docker initializes empty named volumes from the image directory; populated volumes and bind mounts keep their existing permissions. Tests for incompatible permissions therefore populate the fixture before changing its owner, preventing Docker's empty-volume initialization from masking the failure case.
+
+Health uses the existing curl binary to query `/health/ready` on the configured PORT, with loopback requests bypassing inherited outbound proxy settings. Docker health does not itself restart unhealthy processes; the guide distinguishes health status, process restart policy, and platform routing. The application remains PID 1, and Compose's 15-second stop grace exceeds the default ten-second HTTP drain deadline. SQLite remains single-instance/local-filesystem storage, with no rolling replicas or zero-downtime promise.
+
+Base images and package lockfiles are pinned, but Debian security packages are resolved from approved repositories at build time. Builds therefore favor maintained OS packages over an immutable historical APT snapshot; bit-for-bit reproducibility is not claimed. Only Linux/amd64 was exercised in this cloud instance. The local runtime image is approximately 96 MB uncompressed (not a registry transfer-size or memory-use measurement).
+
+Docker build and smoke commands have been added to CI. Platform-specific deployment verification, complete contributor/security documents, and tested backup/restore procedures remain in milestone 5; authentication and Advanced remain later-stage work.
+
+## Milestone 4 validation
+
+The canonical image built successfully with Docker 29.9.2/Compose 2.40.3 on Linux/amd64; a repeat build reused the cache. Five Docker/Compose tests passed, covering the actual Compose configuration, compiled frontend assets and API/health endpoints, a non-default internal PORT, the bundled health check, non-root operation, read-only root filesystem, direct SIGTERM handling with exit code zero, data surviving container removal/recreation, and startup rejection for missing/read-only storage or populated volumes with incompatible permissions. The persistence test writes a changed greeting through SQLite before recreating the application and confirms the changed value through the HTTP API afterward. All disposable test containers and volumes were removed.
+
+The Dockerfile/Compose files and runner are new; application source and lockfiles remain unchanged. Existing Rust/frontend suites were not rerun because this milestone changes packaging only; the actual image compiles both components and exercises their integration. The Docker workflow has been added but not run on GitHub. No platform deployment or production-readiness claim is made.

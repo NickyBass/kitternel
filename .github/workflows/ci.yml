@@ -51,3 +51,15 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Real backend browser tests
         run: python3 ../../../scripts/browser-smoke.py
+
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Build canonical image
+        run: docker build -t kitternel-light:local templates/light
+      - name: Docker and Compose smoke tests
+        run: python3 scripts/docker-smoke.py --image kitternel-light:local
