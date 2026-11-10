@@ -31,6 +31,10 @@ See the [implementation plan](docs/development/IMPLEMENTATION-PLAN.md) for archi
 
 No one-click deployment, zero-downtime, recovery-time, capacity, or production-readiness guarantee is made. See the verification record for the scope of actual checks.
 
+## Create your own application
+
+Run `python3 scripts/create-light.py garden-notes ../garden-notes` from this Git checkout. The new destination must not exist. See the [standalone creation guide](docs/development/CREATE-LIGHT.md) for naming rules, generated files, customization, and verification limits.
+
 ## Quick start
 
 Install [rustup](https://rustup.rs/) using the official instructions. A native C linker is also required (for example, `build-essential` on Debian/Ubuntu). The backend's `rust-toolchain.toml` pins Rust and the required formatter/linter. Run commands from the backend directory so rustup selects that toolchain. SQLx builds bundled SQLite; no separate database server or SQLx CLI is needed. Install Node.js 24.22.1 (pinned in `frontend/.node-version`) and npm 11; the tested npm version is 11.9.0. Node is needed for development and frontend builds, not to serve the compiled application.

@@ -1,0 +1,13 @@
+# @DISPLAY@ — Agent instructions
+
+Read README.md and CONTRIBUTING.md before changing code. Keep code, comments, documentation, and commits in English. Inspect Git state and preserve user changes. Explain a short plan; make focused, reviewable changes with relevant regression tests. Do not claim checks passed unless executed.
+
+One backend crate in backend, one React/TypeScript frontend in frontend, and a single production Rust process. Standard Docker and Compose are the deployment targets. Keep dependencies minimal; no speculative infrastructure, microservices, Redis, Kubernetes, or external database. Add feature modules when needed, not generic abstractions in advance.
+
+Keep API routes under /api and liveness/readiness separate. SPA fallback must not swallow API/health errors or missing assets. Use bound SQL parameters, explicit errors, safe JSON responses, and sanitized structured logs. Never log credentials, SQL contents, personal data, or arbitrary database errors. Never trust forwarded headers without explicit trusted-proxy design. No permissive CORS. Authentication and sessions are absent: before adding protected features design authorization, secure cookies, CSRF, and rotation together.
+
+SQLite uses WAL, foreign keys on every connection, FULL synchronization, bounded timeouts, and a small pool. Preserve these defaults. Add new immutable versioned migrations, test fresh and existing databases, and never rewrite deployed history. Destructive migrations need separate review and verified recovery. Use only temporary databases/volumes in tests.
+
+Keep the canonical Dockerfile, non-root UID 10001, configurable PORT on 0.0.0.0, bounded graceful shutdown and HTTP limits. Persist the entire /data directory on local storage; one instance, serialized replacement. Never delete deployment storage to fix a test. Keep backup/restore helpers and refusal guards. No unverified zero-downtime or production-readiness claims.
+
+Run relevant checks from README.md: Rust format/Clippy/tests, locked frontend install/typecheck/lint/tests/build, path/cleanup regressions, native/browser smoke tests, and Docker/Compose/recovery checks when packaging or persistence changes. PR descriptions must include behavior, exact commands/results, limitations, and follow-up work. Never commit secrets, .env files, databases, generated build outputs, or private keys. Follow SECURITY.md for sensitive reports.
