@@ -33,3 +33,5 @@ SQLite WAL requires a local compatible filesystem, one application instance per 
 Use the [backup/restore procedure](docs/deployment/backup-restore.md). Restore into a fresh volume, verify integrity and application data, and stop validation containers before cutover. Do not overwrite a live database or automatically roll back to an image with incompatible migrations. Platform archive/snapshot features are not automatically consistent SQLite backups.
 
 Dokploy/Coolify guides document the expected configuration, but their actual deployments remain unverified until tested on identified instances/versions. The [verification record](docs/development/verification.md) separates local tests from platform/remote CI evidence.
+
+See the [current remediation record](docs/development/SECURITY-REMEDIATION.md) for locally validated results, the temporary official upstream SQLx pin, runtime selection, visible residual findings, and limits. Remote CI results require separate confirmation.

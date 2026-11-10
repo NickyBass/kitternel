@@ -2,6 +2,7 @@
 """Exercise standalone project creation without application toolchains or Docker."""
 import importlib.util
 import json
+import re
 from pathlib import Path
 import tempfile
 import tomllib
@@ -50,6 +51,11 @@ class GenerationTests(unittest.TestCase):
                             self.assertNotIn("templates/light", text, path)
                             self.assertNotIn("../../../scripts", text, path)
                             self.assertNotIn(str(creator.ROOT), text, path)
+                            if path.suffix == ".md":
+                                for link in re.findall(r"\[[^\]]*\]\(([^)]+)\)", text):
+                                    if not link.startswith(("https://", "http://", "mailto:", "#")):
+                                        target = link.split("#", 1)[0]
+                                        self.assertTrue((path.parent / target).exists(), f"Broken generated link: {link}")
                             if name == "garden-notes" and path.name != "LICENSE":
                                 self.assertNotIn("kitternel", text.lower(), path)
                     self.assertFalse((destination / ".git").exists())

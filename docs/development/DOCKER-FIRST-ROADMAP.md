@@ -99,3 +99,7 @@ Limitations: GitHub repository metadata/API returned Forbidden, so visibility, p
 ### Security remediation follow-up
 
 Updated SQLx/SQLite and the pinned Debian runtime after reviewing CI artifacts. The [remediation record](SECURITY-REMEDIATION.md) documents verification, eliminated critical/RSA findings, size trade-off, and remaining vendor/upstream blockers. Checks remain blocking; no policy relaxations or broad suppressions were added. A disposable-volume old/new-image upgrade drill is included and copied to generated apps.
+
+### Validated blocker resolution
+
+The [current remediation record](SECURITY-REMEDIATION.md) supersedes the earlier blocking scan snapshots: local RustSec/npm/image policies now all pass without exceptions. The official temporary SQLx Git pin permits patched SQLite 0.39.1; the pinned Ubuntu LTS runtime has no reported HIGH/CRITICAL findings. Forty-two MEDIUM and four LOW image entries remain visible, including two CVEs whose vendor severity is lower on Ubuntu. Artifact/Code Scanning actions now declare Node 24 at immutable SHAs. Compatibility, migration/volume upgrade, recovery, resource trade-offs, infrastructure failures and unverified areas are documented. Remote CI still needs confirmation.
