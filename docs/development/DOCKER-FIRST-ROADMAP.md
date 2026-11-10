@@ -95,3 +95,7 @@ Executed locally on Linux/amd64 on 2026-11-10:
 - The newly built source image passed five Docker/Compose tests and six SQLite recovery/cleanup tests. Disposable suite containers/volumes were removed. Shell syntax, diff whitespace, and absence of manifest/lockfile changes were checked.
 
 Limitations: GitHub repository metadata/API returned Forbidden, so visibility, plan, Code Scanning support, SARIF upload, and remote CI remain unverified. Artifacts/summaries are the default; Code Scanning requires explicit maintainer opt-in. Trivy detected OS packages but no language inventory in the stripped runtime image: separate full Rust/npm audits remain essential. Rust/frontend unit/lint/browser suites were not rerun because application source and dependency locks are unchanged. No native Windows/ARM, production deployment, load/exploit test, or platform integration was performed. This work adds transparent detection, not a claim that discovered vulnerabilities are fixed or the project is vulnerability-free.
+
+### Security remediation follow-up
+
+Updated SQLx/SQLite and the pinned Debian runtime after reviewing CI artifacts. The [remediation record](SECURITY-REMEDIATION.md) documents verification, eliminated critical/RSA findings, size trade-off, and remaining vendor/upstream blockers. Checks remain blocking; no policy relaxations or broad suppressions were added. A disposable-volume old/new-image upgrade drill is included and copied to generated apps.

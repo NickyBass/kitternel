@@ -11,7 +11,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNERS = (
-    "backend-smoke.py", "browser-smoke.py", "docker-smoke.py", "sqlite-backup-smoke.py",
+    "backend-smoke.py", "browser-smoke.py", "docker-smoke.py", "sqlite-backup-smoke.py", "sqlite-upgrade-smoke.py",
     "migration-build-smoke.py", "smoke_paths.py", "test-smoke-paths.py", "test-smoke-cleanup.py",
     "security-scan.py", "security-tools.json", "install-security-tools.sh", "test-security-scan.py",
 )
