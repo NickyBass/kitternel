@@ -50,4 +50,4 @@ To test the generator itself from the source repository:
 python3 scripts/test-create-light.py -v
 ```
 
-Step 3 verifies extraction, names, safety, file completeness, and selected native/frontend checks in a temporary generated project. Step 4 will perform a clean generated-image build and Docker/Compose persistence, health, shutdown, and recovery verification. Commands shown above are instructions, not evidence that those deployment checks have already passed.
+Step 3 verifies extraction, names, safety, file completeness, and selected native/frontend checks in a temporary generated project. For repeatable clean generated-image builds and Docker/Compose persistence, health, shutdown, and recovery verification, use the [independent Docker validation command](STANDALONE-DOCKER-VALIDATION.md). Commands shown above are instructions, not evidence that those deployment checks have already passed.

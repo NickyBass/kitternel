@@ -72,6 +72,8 @@ See the [Docker guide](docs/deployment/docker.md) for the optional cloud proxy C
 
 The [Docker-first roadmap](docs/development/DOCKER-FIRST-ROADMAP.md) defines the focused PR sequence for standalone starter readiness.
 
+For changes to generation or Docker verification, also run `python3 scripts/test-standalone-docker.py -v` and `python3 scripts/standalone-docker-smoke.py` from the repository root. The latter builds a fresh extracted application without cache and runs its own Compose/Docker/recovery suites. See [independent validation](docs/development/STANDALONE-DOCKER-VALIDATION.md) for optional proxy CA support, isolation, cleanup, and limitations.
+
 ## Architecture and dependency changes
 
 Keep one backend crate and one production process. Use cohesive modules and concrete feature boundaries. Add abstractions or dependencies only when a current feature needs them. Prefer maintained releases with narrow features and commit both lockfiles. Do not add Redis, queues, microservices, Kubernetes, PostgreSQL, or a component framework to the Light foundation.
