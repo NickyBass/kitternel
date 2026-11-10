@@ -1,5 +1,7 @@
 # Light with Docker
 
+**Installing for the first time?** Start with the [step-by-step installation guide](docker-installation.md), including Windows PowerShell commands and an AI-assistance prompt. This page is the technical reference. If you use the installation guide's explicit project name, add `-p kitternel-local` to every `docker compose` command on this page so you keep using the same database volume.
+
 This guide covers one application container on one Linux host. PostgreSQL and multiple app replicas are outside the Light foundation. Platform-specific routing is documented in the separate Dokploy/Coolify guides and remains unverified on real instances. Run these commands from the repository root unless noted otherwise.
 
 ## Build

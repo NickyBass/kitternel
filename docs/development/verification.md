@@ -59,3 +59,23 @@ Two new regressions failed against the original milestone image: foreign-key que
 The corrected canonical image built successfully as `kitternel-light:recovery-fixes`. `python3 scripts/sqlite-backup-smoke.py --image kitternel-light:recovery-fixes -v` passed all six tests: four Docker recovery tests and two isolated cleanup-failure simulations. Coverage includes both backup and restore rejection of malformed foreign-key schemas, symlinked parents inside/outside `/data`, ordinary nested-path persistence, and the existing live-WAL recovery drill. `python3 scripts/docker-smoke.py --image kitternel-light:recovery-fixes -v` passed all five Docker/Compose tests. Both helper scripts passed `sh -n`, and `git diff --check` passed. Disposable Docker test resources were removed.
 
 Rust/frontend suites were not rerun for these script/documentation changes. The cleanup failures were simulated, not failures of the Docker daemon. No remote CI result or actual platform deployment is claimed.
+
+## Windows Docker Desktop installation and guide
+
+Recorded on 2026-11-10. A private GitHub clone at `49f75209b72f7a539d7e59398392d25dc77feadf` was built and run on Windows with Docker Desktop 4.95.0, Docker client/server 29.8.2, and a Linux/amd64 engine. The Compose plugin reports v5.6.0. The canonical image used Rust 1.99.1 and Node 24.22.1; its supplied npm version was 11.19.1. Host Python was 3.14.2. Rust was not installed on the Windows host.
+
+The first build exposed CRLF shell-script shebangs introduced by Windows Git's `core.autocrlf=true`. A `.gitattributes` rule now preserves LF for shell scripts. The backup smoke runner also needed an explicit SQLite connection close before Windows could remove its exported temporary database. Both fixes were published in `e40c0ade00512f9ab050030a83b466735fa2b040`.
+
+Actual results from this installation:
+
+- Canonical image build: passed; the final image included LF shell scripts.
+- Frontend typecheck, lint, production build, and 5 component tests: passed in the Dockerfile's frontend builder environment.
+- Rust formatting, Clippy with warnings denied, and 21 unit/integration tests: passed in the backend builder environment.
+- Docker/Compose suite: 5 passed, rerun against the corrected image.
+- Backup/export/restore suite: 6 passed after both Windows compatibility fixes, including the live snapshot and separate-volume restoration drill.
+- Playwright: 2 passed against the local Docker application, covering real database data, desktop/mobile layout, SPA fallback, and simulated API failure.
+- Final local application: healthy, loopback port 8080, all three health/API endpoints returned HTTP 200 with the expected responses. Compose project `kitternel-local` retained a named data volume.
+
+The separate native backend process smoke suite and incremental migration build script were not run on this Windows installation. Native Windows Rust builds, macOS/ARM, remote GitHub Actions, and external platform deployments were not verified here.
+
+The [step-by-step installation guide](../deployment/docker-installation.md) was then added as a documentation-only change. Its local file links, Markdown code fences, and `git diff --check` were checked. Docker version/engine/image inspection, Compose configuration validation, service status/logs, and the three PowerShell HTTP checks were exercised against the existing installation. Docker installation links and Compose option/environment behavior were checked against the official documentation linked in the guide. No new full build or test-suite run is claimed for this documentation-only change.

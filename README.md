@@ -15,7 +15,7 @@ See the [implementation plan](docs/development/IMPLEMENTATION-PLAN.md) for archi
 
 - [Contributing](CONTRIBUTING.md): prerequisites, local workflow, required checks, and migration rules.
 - [Security policy](SECURITY.md): current boundaries and sensitive reporting.
-- [Docker](docs/deployment/docker.md), [Dokploy](docs/deployment/dokploy.md), [Coolify](docs/deployment/coolify.md).
+- [Step-by-step Docker installation](docs/deployment/docker-installation.md), [Docker reference](docs/deployment/docker.md), [Dokploy](docs/deployment/dokploy.md), [Coolify](docs/deployment/coolify.md).
 - [Backup and restore](docs/deployment/backup-restore.md), [troubleshooting](docs/deployment/troubleshooting.md), [verification record](docs/development/verification.md).
 
 | Capability | Status |
@@ -107,6 +107,8 @@ Only trusted compiled frontend files belong in `FRONTEND_DIR`. Keep databases, s
 In Codex Cloud, loopback addresses belong to the cloud machine, not your computer. An interactive preview depends on capabilities exposed by your client; it is not guaranteed. Browser tests can still run inside the cloud and save screenshots without an interactive Desktop panel.
 
 ## Docker
+
+For a first installation, follow the [step-by-step Docker guide](docs/deployment/docker-installation.md). It covers Windows PowerShell and Linux/macOS terminals, prerequisites, private repository access, health checks, persistent data, updates, troubleshooting, and an AI-assistance prompt. No host Rust or Node installation is required for this workflow.
 
 From the repository root:
 
