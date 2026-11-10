@@ -12,7 +12,7 @@ Requirements: Docker with BuildKit and Docker Compose v2. The canonical build co
 docker build -t kitternel-light:local templates/light
 ```
 
-The Node and Rust builder stages use committed lockfiles and pinned toolchains/base image digests. The runtime contains the stripped Rust binary, compiled frontend, CA certificates, curl for health checks, and sqlite3 for trusted operator diagnostics. Node, npm, Cargo, and application source are absent from the runtime. Debian packages receive repository updates at build time; this is not a bit-for-bit reproducible package snapshot. Review and refresh image digests and package updates deliberately, then rerun smoke tests.
+The Node and Rust builder stages use committed lockfiles and pinned toolchains/base image digests. The runtime contains the stripped Rust binary, compiled frontend, CA certificates, curl for health checks, and sqlite3 for trusted operator diagnostics. Node, npm, Cargo, and application source are absent from the runtime. Ubuntu LTS runtime packages receive repository updates at build time; this is not a bit-for-bit reproducible package snapshot. Review and refresh image digests and package updates deliberately, then rerun smoke tests.
 
 If the build runs behind the Codex Cloud TLS proxy, provide its existing trusted CA as an optional BuildKit secret:
 

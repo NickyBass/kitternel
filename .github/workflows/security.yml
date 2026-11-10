@@ -1,0 +1,140 @@
+name: Security
+
+on:
+  pull_request:
+    paths: &security_paths
+      - 'templates/light/backend/**'
+      - 'templates/light/frontend/**'
+      - 'templates/light/scripts/**'
+      - 'templates/light/Dockerfile'
+      - 'templates/light/compose.yaml'
+      - 'templates/light/.dockerignore'
+      - 'scripts/security-*'
+      - 'scripts/install-security-tools.sh'
+      - 'scripts/test-security-scan.py'
+      - 'scripts/docker-smoke.py'
+      - 'scripts/sqlite-backup-smoke.py'
+      - 'scripts/test-smoke-cleanup.py'
+      - '.github/workflows/security.yml'
+      - '.github/workflows/ci.yml'
+  push:
+    branches: [main]
+    paths: *security_paths
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version-file: templates/light/frontend/.node-version
+      - name: Policy regressions
+        run: python3 scripts/test-security-scan.py -v
+      - name: Install pinned npm
+        run: npm install --global npm@11.9.0 --ignore-scripts --no-audit --no-fund
+      - name: Frontend locked dependency audit
+        if: ${{ !cancelled() }}
+        run: python3 scripts/security-scan.py npm --project templates/light
+      - name: Install pinned RustSec tool
+        if: ${{ !cancelled() }}
+        run: |
+          sh scripts/install-security-tools.sh rust "$RUNNER_TEMP/security-tools"
+          echo "$RUNNER_TEMP/security-tools/bin" >> "$GITHUB_PATH"
+      - name: Rust locked dependency audit
+        if: ${{ !cancelled() }}
+        run: python3 scripts/security-scan.py rust --project templates/light
+      - name: Dependency summary
+        if: ${{ always() }}
+        run: |
+          if test -d security-reports; then
+            for report in security-reports/*.summary.md; do
+              if test -f "$report"; then cat "$report" >> "$GITHUB_STEP_SUMMARY"; fi
+            done
+          else
+            echo 'Security scan incomplete: tool installation or audit did not produce reports.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node 24)
+        if: ${{ always() }}
+        with:
+          name: dependency-security-reports
+          path: security-reports/
+          retention-days: 14
+
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      sarif: ${{ steps.report.outputs.sarif }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Smoke cleanup regressions
+        run: python3 scripts/test-smoke-cleanup.py -v
+      - name: Build canonical final image once
+        id: build
+        run: docker build -t kitternel-light:local templates/light
+      - name: Install pinned image scanner
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          sh scripts/install-security-tools.sh image "$RUNNER_TEMP/security-tools"
+          echo "$RUNNER_TEMP/security-tools/bin" >> "$GITHUB_PATH"
+      - name: Scan actual final image
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: python3 scripts/security-scan.py image --project templates/light --image kitternel-light:local
+      - name: Docker and Compose smoke tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: python3 scripts/docker-smoke.py --image kitternel-light:local
+      - name: SQLite backup and restore drill
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: python3 scripts/sqlite-backup-smoke.py --image kitternel-light:local
+      - name: Image summary
+        id: report
+        if: ${{ always() }}
+        run: |
+          if test -f security-reports/image.summary.md; then
+            cat security-reports/image.summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Image security scan incomplete: build, installation, or scan did not produce a report.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if test -s security-reports/image.sarif; then echo 'sarif=true' >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node 24)
+        if: ${{ always() }}
+        with:
+          name: image-security-reports
+          path: security-reports/
+          retention-days: 14
+
+  optional-code-scanning:
+    needs: docker
+    if: ${{ always() && vars.ENABLE_CODE_SCANNING == 'true' && github.event_name != 'pull_request' && needs.docker.outputs.sarif == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2 (Node 24)
+        with:
+          name: image-security-reports
+          path: security-reports
+      - uses: github/codeql-action/upload-sarif@5895b2c9be147bc7f1c75ce72c5cb577febb1907 # v4 (Node 24)
+        with:
+          sarif_file: security-reports/image.sarif
+          category: production-image

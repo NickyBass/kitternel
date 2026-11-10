@@ -12,7 +12,8 @@ serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time", "fs", "io-util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "json", "std"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+# Keep SQLite features narrow: the 0.9 sqlite umbrella also enables extension loading/deserialization.
+sqlx = { git = "https://github.com/launchbadge/sqlx", rev = "10462fa4414c6c7f1ed1d39bb31678e3b726878c", default-features = false, features = ["runtime-tokio", "sqlite-bundled", "sqlite-unlock-notify", "migrate", "macros"] }
 
 tower-http = { version = "0.6", default-features = false, features = ["fs", "set-header"] }
 tower = { version = "0.5", features = ["util"] }

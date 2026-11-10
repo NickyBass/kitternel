@@ -26,6 +26,7 @@ See the [implementation plan](docs/development/IMPLEMENTATION-PLAN.md) for archi
 | Consistent SQLite snapshot/export/restore to a fresh volume | Implemented; local Docker drill exercised |
 | Dokploy and Coolify settings | Documented from official sources; real deployments unverified |
 | GitHub Actions | Configured; remote run status must be checked on GitHub |
+| Vulnerability scans | RustSec/npm/final-image tooling; [policy and limits](docs/development/SECURITY-SCANNING.md); blocking findings require triage |
 | Authentication, authorization, sessions, CSRF | Later hardening stage; not implemented |
 | Advanced / PostgreSQL | Later stage; not implemented |
 

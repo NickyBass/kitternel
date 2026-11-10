@@ -89,3 +89,7 @@ Validate a restore with integrity/FK checks and a temporary matching application
 ## Identity and license
 
 Project/package/binary/image: `@NAME@`; Rust imports use hyphens converted to underscores. Display name: @DISPLAY@. Keep the upstream MIT copyright notice in `LICENSE`; add your own notices for your changes as appropriate. Included CI configuration and tests are verification tools, not evidence that this generated application's build, deployment, or CI has already passed.
+
+Security tooling and the independent scheduled/PR workflow are documented in [SECURITY-SCANNING.md](SECURITY-SCANNING.md). Docker tests and image scanning share the same canonical build. Review blocking findings before release; no automatic fixes or suppressions are applied.
+
+For dependency/base-image upgrades with unchanged migration files, preserve trusted local previous/replacement image tags and run `python3 scripts/sqlite-upgrade-smoke.py --previous-image PREVIOUS_IMAGE --image REPLACEMENT_IMAGE`. It verifies retained data and exact existing migration metadata on its own disposable volume; both images must use the same database path. It never opens deployment storage and is not a rollback tool.

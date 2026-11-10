@@ -11,12 +11,13 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNERS = (
-    "backend-smoke.py", "browser-smoke.py", "docker-smoke.py", "sqlite-backup-smoke.py",
+    "backend-smoke.py", "browser-smoke.py", "docker-smoke.py", "sqlite-backup-smoke.py", "sqlite-upgrade-smoke.py",
     "migration-build-smoke.py", "smoke_paths.py", "test-smoke-paths.py", "test-smoke-cleanup.py",
+    "security-scan.py", "security-tools.json", "install-security-tools.sh", "test-security-scan.py",
 )
 # Identity substitutions are limited to these known first-party text files.
 IDENTITY_FILES = {
-    ".github/workflows/ci.yml", "Dockerfile", "compose.yaml", ".env.example", "backend/Cargo.toml",
+    ".github/workflows/ci.yml", ".github/workflows/security.yml", "SECURITY-SCANNING.md", "Dockerfile", "compose.yaml", ".env.example", "backend/Cargo.toml",
     "scripts/sqlite-backup.sh", "scripts/sqlite-restore.sh",
     "backend/src/main.rs", "backend/src/config.rs", "backend/migrations/0001_greeting.sql",
     *(f"backend/tests/{name}.rs" for name in ("database", "routes", "server", "static_files")),
@@ -55,14 +56,14 @@ def customize(relative, text, name):
         if "packages" in package:
             package["packages"][""]["name"] = f"{name}-frontend"
         text = json.dumps(package, indent=2) + "\n"
-    if relative.startswith("scripts/") or relative == ".github/workflows/ci.yml":
+    if relative.startswith(("scripts/", ".github/workflows/")) or relative == "SECURITY-SCANNING.md":
         text = text.replace("templates/light/", "").replace("../../../scripts/", "../scripts/")
     if relative == "scripts/docker-smoke.py":
         text = text.replace(f'.stdout.strip(), "{name}")', f'.stdout.strip(), "{name[:15]}")')
     if relative == "compose.yaml":
         text = f"name: {name}\n\n" + text
-    if relative == ".github/workflows/ci.yml":
-        text = text.replace("templates/light\n", ".\n")
+    if relative.startswith(".github/workflows/") or relative == "SECURITY-SCANNING.md":
+        text = text.replace("templates/light\n", ".\n").replace("--project templates/light", "--project .").replace(" templates/light", " .")
     return text
 
 
@@ -89,6 +90,8 @@ def generate(name, destination):
     files.update({f"scripts/{name}": ROOT / "scripts" / name for name in RUNNERS})
     files.update({name: ROOT / name for name in (".gitignore", ".gitattributes", "LICENSE")})
     files[".github/workflows/ci.yml"] = ROOT / ".github/workflows/ci.yml"
+    files[".github/workflows/security.yml"] = ROOT / ".github/workflows/security.yml"
+    files["SECURITY-SCANNING.md"] = ROOT / "docs/development/SECURITY-SCANNING.md"
     with tempfile.TemporaryDirectory(prefix=".light-create-", dir=parent) as temporary:
         stage = Path(temporary)
         for relative, source in files.items():

@@ -2,6 +2,7 @@
 """Exercise standalone project creation without application toolchains or Docker."""
 import importlib.util
 import json
+import re
 from pathlib import Path
 import tempfile
 import tomllib
@@ -22,7 +23,7 @@ class GenerationTests(unittest.TestCase):
                     for relative in ("backend/src/main.rs", "backend/Cargo.lock", "backend/build.rs",
                                      "backend/migrations/0001_greeting.sql", "frontend/package-lock.json",
                                      "frontend/.node-version", "Dockerfile", "compose.yaml", ".dockerignore",
-                                     ".github/workflows/ci.yml", ".env.example", ".gitignore", ".gitattributes",
+                                     ".github/workflows/ci.yml", ".github/workflows/security.yml", "SECURITY-SCANNING.md", ".env.example", ".gitignore", ".gitattributes",
                                      "README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md", "LICENSE",
                                      "scripts/sqlite-backup.sh", "scripts/sqlite-restore.sh",
                                      *(f"scripts/{runner}" for runner in creator.RUNNERS)):
@@ -50,6 +51,11 @@ class GenerationTests(unittest.TestCase):
                             self.assertNotIn("templates/light", text, path)
                             self.assertNotIn("../../../scripts", text, path)
                             self.assertNotIn(str(creator.ROOT), text, path)
+                            if path.suffix == ".md":
+                                for link in re.findall(r"\[[^\]]*\]\(([^)]+)\)", text):
+                                    if not link.startswith(("https://", "http://", "mailto:", "#")):
+                                        target = link.split("#", 1)[0]
+                                        self.assertTrue((path.parent / target).exists(), f"Broken generated link: {link}")
                             if name == "garden-notes" and path.name != "LICENSE":
                                 self.assertNotIn("kitternel", text.lower(), path)
                     self.assertFalse((destination / ".git").exists())
@@ -61,7 +67,14 @@ class GenerationTests(unittest.TestCase):
                     self.assertEqual((destination / "scripts/sqlite-backup.sh").stat().st_mode & 0o777,
                                      (creator.ROOT / "templates/light/scripts/sqlite-backup.sh").stat().st_mode & 0o777)
                     workflow = (destination / ".github/workflows/ci.yml").read_text()
-                    self.assertIn('docker build -t ' + name + ':local .\n', workflow)
+                    security = (destination / ".github/workflows/security.yml").read_text()
+                    self.assertIn("scripts/security-scan.py", security)
+                    self.assertIn("--project .", security)
+                    self.assertIn("--image " + name + ":local", security)
+                    self.assertIn("workflow_dispatch", security)
+                    self.assertIn("ENABLE_CODE_SCANNING", security)
+                    self.assertNotIn("continue-on-error", security)
+                    self.assertIn('docker build -t ' + name + ':local .\n', security)
                     self.assertIn('working-directory: backend\n', workflow)
                     self.assertIn('python3 ../scripts/backend-smoke.py', workflow)
 

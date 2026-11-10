@@ -93,3 +93,5 @@ Explain the concrete problem and resulting behavior, list commands actually exec
 Report vulnerabilities using [SECURITY.md](SECURITY.md). Dependency checks can be run with `npm audit` from the frontend and `cargo audit` from the backend when cargo-audit is installed. Review advisory applicability and compatibility; do not disable integrity/TLS checks, suppress assertions, or blindly apply a downgrade suggested by audit tooling.
 
 The existing [MIT license](LICENSE) remains in place. Do not invent a copyright holder or alter licensing as part of an unrelated contribution.
+
+Security-tooling changes also require `python3 scripts/test-security-scan.py -v`, generator regressions, and workflow validation. Run scans using the [security guide](docs/development/SECURITY-SCANNING.md), report findings separately from infrastructure errors, and never change lockfiles automatically.
