@@ -39,11 +39,21 @@ Depends on PR 1 only for a clean review sequence. Support default, absolute, and
 
 ## PR 3: Extract and customize a complete standalone project
 
+Implemented on `feat/light-project-generation`: `scripts/create-light.py NAME DESTINATION` generates a standalone layout with curated tracked files, scoped identity/path mappings, standalone documentation/agent instructions, and independent CI. See [CREATE-LIGHT.md](CREATE-LIGHT.md). Source symlinks, invalid names, existing destinations, missing parents, and destinations inside the source repository are rejected. Regression tests cover completeness, metadata/lockfile consistency, long names, default identity, source-layout references, and destination safety. Clean Docker deployment verification remains PR 4.
+
 Depends on PR 2. Choose the smallest reproducible extraction mechanism, with validated project names and no overwriting of existing destinations. Include application code, migrations, lockfiles, Dockerfile, Compose, backup helpers, test runners, CI, documentation, license, and agent instructions. Preserve file modes and LF shell scripts.
 
 Define explicit mappings for the project name, Cargo package, Rust crate identifier, executable, npm package, Docker image, and Compose project identifiers. Update lockfile package metadata consistently. Avoid replacing user data or migration history through indiscriminate text substitutions. Generated instructions must describe their actual standalone paths and commands.
 
 Acceptance: extract both a default and a renamed project into temporary directories; verify completeness, naming consistency, rejected invalid names, destination safety, native/frontend checks, and runnable CI paths. A generator is a development tool, not a runtime dependency.
+
+### PR 3 verification
+
+Executed locally on Linux/amd64 on 2026-11-10. Seven generator tests passed, including customized/default/long project names, metadata and file completeness, reserved-name rejection, destination races, staging/publication failures, and symlink refusal. The original path and cleanup regression suites also passed (five tests each).
+
+Generated `garden-notes` outside the source repository. Its locked frontend install, typecheck, lint, five component tests, and production build passed. Its Rust formatting, Clippy with warnings denied, 21 tests, and locked debug build passed. Its own seven process tests, two Chromium browser tests, incremental migration build regression, and both five-test runner regression suites passed. Compose configuration validation passed. No source-layout dependencies remained in generated files; the MIT notice was retained. Downloaded dependency caches were reused.
+
+The final generation differs from that tested native/frontend project only in the neutral Docker OS-account label (`app`, still UID/GID 10001). No generated Docker image build or deployment/recovery suite, remote CI, native Windows/ARM validation, or platform deployment was executed. Those Docker checks remain PR 4; Windows-specific naming/modes are covered only by focused local checks and file rules.
 
 ## PR 4: Verify the extracted Docker-first starter end to end
 

@@ -1,0 +1,91 @@
+# @DISPLAY@
+
+Standalone Rust/Axum/SQLite and React/TypeScript application. One Rust process serves the compiled frontend, API, and health endpoints. Authentication, authorization, sessions, and CSRF defenses are not implemented. This is a foundation preview, not a production-readiness guarantee.
+
+## Docker first
+
+From this project's root, using Docker with BuildKit and Compose v2:
+
+```sh
+docker build -t @NAME@:local .
+docker compose up -d --no-build --wait
+curl --fail http://127.0.0.1:8080/health/ready
+curl --fail http://127.0.0.1:8080/api/hello
+```
+
+Open http://localhost:8080. The Compose project is `@NAME@`; keep that identity stable to retain its data volume. Set `HOST_PORT=8081` if needed. The container uses UID/GID 10001, a read-only application filesystem, and persistent `/data/@NAME@.db` in the `light-data` volume. Mount the entire directory, including WAL/SHM. Use local compatible storage, one app instance, and serialized redeployments. Bind mounts require explicit UID/GID permissions; never use chmod 777. Do not put the database on network storage.
+
+`docker compose stop` stops the app. `docker compose down` retains data; **do not use `down --volumes` on deployment storage**. Readiness checks SQLite; liveness only checks HTTP. A health status does not itself restart an unhealthy container. SIGTERM drains requests for ten seconds by default; keep the container grace period longer. HTTPS requires a separately configured trusted reverse proxy; forwarded headers confer no application trust.
+
+For upgrades, review migrations, create and verify a backup, rebuild the image, then use `docker compose up -d --no-build --wait`. Expect interruption. Migrations run before serving traffic. An older image does not undo schema changes; rollback requires schema compatibility.
+
+## Development and verification
+
+Install rustup (the backend pins its toolchain), a C compiler/linker, Node at `frontend/.node-version`, npm 11, and Python 3 with SQLite support. Docker-only builds need no host Rust/Node installation.
+
+```sh
+cd frontend
+npm ci --no-audit --no-fund
+npm run typecheck
+npm run lint
+npm test
+npm run build
+cd ../backend
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked
+cargo build --locked
+cargo run --locked
+```
+
+For hot reload, run `npm run dev` from `frontend` while the backend runs on 8080. `API_PROXY_TARGET` changes the development proxy. `.env.example` is a reference, not automatically loaded by the backend. Relative runtime paths depend on the process working directory: launch the native backend from `backend`. Defaults and validation are in `backend/src/config.rs`.
+
+After building frontend and backend, run from `backend`:
+
+```sh
+python3 ../scripts/test-smoke-paths.py -v
+python3 ../scripts/backend-smoke.py
+python3 ../scripts/migration-build-smoke.py
+cd ../frontend
+npx playwright install --with-deps chromium
+python3 ../scripts/browser-smoke.py
+```
+
+Process/signal tests target Unix. Browser tests may use `CHROMIUM_PATH` instead of downloading Chromium. Build and runners must share their working directory and Cargo configuration: relative `CARGO_TARGET_DIR` follows Cargo's cwd rules. A missing selected debug binary fails without fallback. Run offline metadata only after dependencies/toolchain have been installed.
+
+After building the image, run from the project root:
+
+```sh
+python3 scripts/test-smoke-cleanup.py -v
+python3 scripts/docker-smoke.py --image @NAME@:local -v
+python3 scripts/sqlite-backup-smoke.py --image @NAME@:local -v
+```
+
+These scripts use disposable resources, never your deployment volume. The included GitHub Actions workflow runs the same checks after you initialize a new Git repository and push it. No original source repository is required. Review `AGENTS.md`, `CONTRIBUTING.md`, and `SECURITY.md` before changing code.
+
+## Consistent backup and restore
+
+Use `/app/sqlite-backup` and `/app/sqlite-restore` from the matching image. Never copy only the live `.db` file. The helper uses SQLite's online backup API, checks integrity/foreign keys, and publishes a standalone file without overwriting. Snapshot names start with an alphanumeric character and contain only letters, digits, dots, underscores, and hyphens.
+
+Identify the actual data volume first:
+
+```sh
+docker inspect "$(docker compose ps -q app)" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}'
+```
+
+Record that name and the image/migration revision. Substitute it for `ACTUAL_DATA_VOLUME` below; do not infer a production volume name:
+
+```sh
+docker volume create @NAME@-backups
+docker run --rm --read-only --no-healthcheck --network none --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:size=32m,mode=1777 --mount source=ACTUAL_DATA_VOLUME,target=/data --mount source=@NAME@-backups,target=/backups --entrypoint /app/sqlite-backup @NAME@:local snapshot.sqlite
+docker volume create @NAME@-restored
+docker run --rm --read-only --no-healthcheck --network none --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:size=32m,mode=1777 --mount source=@NAME@-restored,target=/data --mount source=@NAME@-backups,target=/backups,readonly --entrypoint /app/sqlite-restore @NAME@:local snapshot.sqlite
+```
+
+Restore only to a new empty volume; existing database/sidecars and symlinked parents are rejected. Helpers require local POSIX storage with hard links. Export only the finalized snapshot, protect it like application data, and retain encrypted off-host copies. A second volume on the same host does not protect against host loss. Scheduling, retention, encryption, and monitoring are operator responsibilities.
+
+Validate a restore with integrity/FK checks and a temporary matching application image using **only the restored volume**, then compare actual application data and migration metadata. Preserve the original volume. Before cutover stop the original and validation apps, change the persistent mount to the verified restored volume, and verify readiness/data. Never overlap instances on one database. The automated recovery drill is a repeatable local check, not an RPO/RTO or host-loss guarantee.
+
+## Identity and license
+
+Project/package/binary/image: `@NAME@`; Rust imports use hyphens converted to underscores. Display name: @DISPLAY@. Keep the upstream MIT copyright notice in `LICENSE`; add your own notices for your changes as appropriate. Included CI configuration and tests are verification tools, not evidence that this generated application's build, deployment, or CI has already passed.
