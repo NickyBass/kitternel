@@ -45,9 +45,18 @@ class DockerSmoke(unittest.TestCase):
         self.addCleanup(self.cleanup)
 
     def cleanup(self):
-        for name in reversed(self.containers):
-            docker("rm", "--force", name, check=False)
-        docker("volume", "rm", self.volume, check=False)
+        failures = []
+        resources = [("container", name) for name in reversed(self.containers)]
+        resources.append(("volume", self.volume))
+        for kind, name in resources:
+            arguments = ("rm", "--force", name) if kind == "container" else ("volume", "rm", name)
+            try:
+                result = docker(*arguments, check=False)
+                if result.returncode:
+                    failures.append(f"{kind} {name}: removal exited with code {result.returncode}")
+            except (OSError, subprocess.SubprocessError) as error:
+                failures.append(f"{kind} {name}: removal raised {type(error).__name__}")
+        self.assertFalse(failures, "Docker fixture cleanup failed:\n" + "\n".join(failures))
 
     def start(self, suffix, port=8080, mounted=True, readonly_volume=False):
         name = f"{self.prefix}-{suffix}"
