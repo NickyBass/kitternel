@@ -10,6 +10,8 @@ import time
 import urllib.error
 import urllib.request
 
+from smoke_paths import backend_binary
+
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "templates/light/backend"
 FRONTEND = ROOT / "templates/light/frontend"
@@ -24,7 +26,7 @@ def main():
         environment.update(PORT=str(port), SQLITE_PATH=str(Path(temporary) / "test.db"),
                            FRONTEND_DIR=str(FRONTEND / "dist"), SHUTDOWN_TIMEOUT_SECS="2")
         with open(Path(temporary) / "backend.log", "w+") as log:
-            process = subprocess.Popen([str(BACKEND / "target/debug/kitternel-light")],
+            process = subprocess.Popen([str(backend_binary(BACKEND))],
                                        env=environment, stdout=log, stderr=log)
             try:
                 base_url = f"http://127.0.0.1:{port}"

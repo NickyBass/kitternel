@@ -41,11 +41,14 @@ cargo fmt --all -- --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked
 cargo build --locked
+python3 ../../../scripts/test-smoke-paths.py -v
 python3 ../../../scripts/backend-smoke.py
 python3 ../../../scripts/migration-build-smoke.py
 ```
 
 The migration regression builds a disposable source copy twice using already downloaded dependencies offline. It does not alter migrations or build outputs in the checkout.
+
+The process and browser smoke runners use offline `cargo metadata` to locate the host debug executable. Cargo must be available, with dependencies already installed by the build. With no target override, the existing backend target directory is used; `CARGO_TARGET_DIR` and Cargo configuration are honored. Relative environment paths resolve against the current working directory, just as Cargo does. Run the build and runners from the same directory with the same configuration/environment, or use an absolute target path. Missing selected binaries fail explicitly; runners never fall back to an older binary in another directory. Cross-compilation and release-profile artifacts are not selected by these debug smoke runners.
 
 Install Chromium from `templates/light/frontend`, then run the isolated browser suite:
 
