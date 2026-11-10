@@ -93,3 +93,13 @@ Project/package/binary/image: `@NAME@`; Rust imports use hyphens converted to un
 Security tooling and the independent scheduled/PR workflow are documented in [SECURITY-SCANNING.md](SECURITY-SCANNING.md). Docker tests and image scanning share the same canonical build. Review blocking findings before release; no automatic fixes or suppressions are applied.
 
 For dependency/base-image upgrades with unchanged migration files, preserve trusted local previous/replacement image tags and run `python3 scripts/sqlite-upgrade-smoke.py --previous-image PREVIOUS_IMAGE --image REPLACEMENT_IMAGE`. It verifies retained data and exact existing migration metadata on its own disposable volume; both images must use the same database path. It never opens deployment storage and is not a rollback tool.
+
+### Recovery utility requirements
+
+The container's SQLite backup/restore helpers explicitly invoke `/usr/bin/gnudirname`,
+`gnurealpath`, `gnumktemp`, `gnurm`, `gnusync`, and `gnuln`, checking each executable's
+GNU coreutils identity before accessing storage. They do not fall back to PATH or
+the default uutils provider. These names are supplied by the current Ubuntu runtime;
+running the helpers directly on other hosts/images requires those executables.
+No additional package is installed. This affects maintenance only, not application startup.
+The uutils package remains installed and its security findings remain reportable.

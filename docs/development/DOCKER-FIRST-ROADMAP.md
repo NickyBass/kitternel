@@ -103,3 +103,27 @@ Updated SQLx/SQLite and the pinned Debian runtime after reviewing CI artifacts. 
 ### Validated blocker resolution
 
 The [current remediation record](SECURITY-REMEDIATION.md) supersedes the earlier blocking scan snapshots: local RustSec/npm/image policies now all pass without exceptions. The official temporary SQLx Git pin permits patched SQLite 0.39.1; the pinned Ubuntu LTS runtime has no reported HIGH/CRITICAL findings. Forty-two MEDIUM and four LOW image entries remain visible, including two CVEs whose vendor severity is lower on Ubuntu. Artifact/Code Scanning actions now declare Node 24 at immutable SHAs. Compatibility, migration/volume upgrade, recovery, resource trade-offs, infrastructure failures and unverified areas are documented. Remote CI still needs confirmation.
+
+## Step 6B: Explicit GNU recovery utilities
+
+Branch: `security/gnu-recovery-utilities`. Backup/restore maintenance helpers select
+six verified GNU-prefixed executables with absolute paths and fail before touching
+storage if a required utility is missing, fails identity verification, or is not GNU.
+Default dirname/realpath/mktemp/sync/ln were uutils; rm already used GNU and is now
+also protected against PATH shadowing. No package, base image, dependency lock,
+migration, application behavior or scanner enforcement change was made.
+
+Local verification passed: generator 7, security policy 11, cleanup 5, target paths 5,
+standalone orchestration 9, canonical Docker/Compose 5, recovery/cleanup 8, plus a
+final focused failure-propagation test. The independent generated application passed
+its clean Docker build, Compose/runtime/recovery suites and scoped resource cleanup.
+Both candidate images report 42 MEDIUM and 4 LOW occurrences, unchanged from the
+46-occurrence/36-CVE baseline; all 20 uutils entries remain visible. RustSec and npm
+pass with zero findings. Initial disk-exhaustion failures, cache recovery, exact
+commands, implementation details and remaining verification limits are recorded in
+[SECURITY-REMEDIATION.md](SECURITY-REMEDIATION.md#step-6b-explicit-gnu-recovery-utilities).
+
+Future work: investigate the supported Ubuntu provider transition separately;
+do not force removal of protected packages. This step reduces operational exposure
+and does not mark the uutils vulnerability group resolved. Remote CI and platform
+integrations were not verified.

@@ -61,3 +61,91 @@ python3 scripts/sqlite-upgrade-smoke.py --previous-image kitternel-light:securit
 The script inspects both local images first, owns only a fresh randomly named test volume, verifies data and exact existing migration metadata, and cleans up its containers/volume. It never opens deployment storage. It is not a migration rollback tool and is not automatically run in CI because no previous-release image is published by this repository.
 
 Source dependency changes are intentional and limited to the SQLx upgrade and compatible SQLite binding update; frontend manifests/lockfile and application/migration source are unchanged. No platform deployment or integration, remote CI success, native Windows/ARM check, new full extracted-image build, or resolved-all-vulnerabilities claim is made. The updated commit is intended to improve the open Step 5 PR while preserving its honest blocking checks.
+
+## Step 6B: explicit GNU recovery utilities
+
+The production-image maintenance helpers now use absolute GNU-prefixed commands:
+`/usr/bin/gnudirname`, `/usr/bin/gnurealpath`, `/usr/bin/gnumktemp`,
+`/usr/bin/gnurm`, `/usr/bin/gnusync`, and `/usr/bin/gnuln`.
+Each helper checks executability and the `GNU coreutils` version identity before
+accessing storage. Missing, failing, or non-GNU executables fail explicitly; no
+PATH/default-provider fallback is allowed. Fixed paths are intentional for the
+current Ubuntu image, not a promise of direct host/other-distribution support.
+
+| Operation | Selection and behavior retained |
+| --- | --- |
+| Parent extraction and canonical validation | GNU dirname and realpath (`-e --`) |
+| Private temporary files | GNU mktemp; existing umask/template unchanged |
+| Failure/exit cleanup | GNU rm (`-f`, explicit quoted paths) |
+| Filesystem durability | GNU sync (`-f`) |
+| Atomic no-clobber publication | GNU ln (`-T --`), no forced overwrite |
+
+These commands execute inside maintenance containers only. SQLite CLI remains the
+database backup/integrity/restore engine. Shell `printf`, tests, traps and conditionals
+are builtins. Export uses host-side `docker cp`; host commands and fixture setup
+commands are not changed. Normal application startup does not invoke these helpers.
+GNU coreutils 9.7 identity was checked by executing all six commands in the actual
+candidate image, not inferred from package names. GNU was already installed: no
+Dockerfile, package installation, dependency lock, migration or scanner policy changed.
+
+This reduces operational use of affected uutils implementations; it does not fix
+or remove the installed rust-coreutils package. The package is intentionally retained
+because safely replacing its protected Ubuntu provider is a separate reviewed task.
+Do not force removal of protected/essential packages. Other runtime findings and
+the temporary SQLx upstream pin remain maintenance work.
+
+### Step 6B verification
+
+Executed on Linux/amd64, 2026-11-10:
+
+```sh
+sh -n templates/light/scripts/sqlite-backup.sh
+sh -n templates/light/scripts/sqlite-restore.sh
+python3 scripts/test-create-light.py -v
+python3 scripts/test-security-scan.py -v
+python3 scripts/test-smoke-cleanup.py -v
+python3 scripts/test-smoke-paths.py -v
+python3 scripts/test-standalone-docker.py -v
+docker build --secret id=proxy_ca,src="$CODEX_PROXY_CERT" -t kitternel-light:gnu-recovery templates/light
+python3 scripts/docker-smoke.py --image kitternel-light:gnu-recovery -v
+python3 scripts/sqlite-backup-smoke.py --image kitternel-light:gnu-recovery -v
+python3 scripts/sqlite-backup-smoke.py --image kitternel-light:gnu-recovery -v SQLiteBackupSmoke.test_gnu_identity_missing_tools_and_failure_propagation
+python3 scripts/security-scan.py rust --project templates/light --reports /tmp/step6b-security
+python3 scripts/security-scan.py npm --project templates/light --reports /tmp/step6b-security
+python3 scripts/security-scan.py image --project templates/light --image kitternel-light:gnu-recovery --reports /tmp/step6b-security
+python3 scripts/standalone-docker-smoke.py --proxy-ca "$CODEX_PROXY_CERT"
+git diff --check
+```
+
+The six GNU-prefixed executables are supplied by the already installed
+`gnu-coreutils` package. The default dirname, realpath, mktemp, sync and ln resolve to uutils 0.10.0.
+Default rm already resolves to GNU 9.7; its explicit GNU path additionally prevents
+PATH shadowing without claiming a provider change for that operation.
+`ln -T`, `sync -f` and canonical/temp-file behavior retain their existing arguments;
+explicitly selecting dirname/rm alongside them keeps all maintenance filesystem
+operations on the same verified provider.
+
+Regression totals: generator 7, security policy 11, cleanup 5, target paths 5,
+standalone orchestration 9. Canonical-image Docker/Compose tests: 5; recovery/cleanup:
+8. A focused final utility-failure test also checks version-command failure and
+restore sync failure. Coverage includes GNU identity, missing/non-executable tools,
+wrong identity, PATH shadowing, failure propagation, concurrent publication,
+space/dollar/Unicode database filenames, WAL backup/export, migration checksums,
+unchanged live-source data, invalid inputs, symlinks and orphan sidecars.
+
+RustSec and both npm audit scopes pass with zero findings. Trivy before/after:
+46 occurrences, 36 distinct CVEs, 42 MEDIUM, 4 LOW, zero HIGH/CRITICAL/UNKNOWN.
+All 20 uutils findings remain visible. No ignore rules or severity changes were made.
+The generated image was additionally scanned using its own copied security script;
+it produced the same counts. All scans used the committed tool pins; the allowed
+Trivy GHCR database and optional public build CA preserved TLS verification.
+
+Initial uncached standalone build and overlapping runtime checks failed because
+the environment ran out of disk. Two reproducible Cargo target caches (the checkout
+and an earlier temporary clean-build fixture) were removed, with no database volume
+or source changes. Those failed attempts are not counted as passing. The canonical
+image build reused existing layers; the repeated standalone validation built the
+independent application without cache. Rust/frontend unit, lint and browser suites
+were not rerun because their code/dependencies are unchanged; the clean generated
+build compiled Rust and typechecked/built the frontend. Native Windows/ARM, remote
+GitHub Actions and production deployments remain unverified.
