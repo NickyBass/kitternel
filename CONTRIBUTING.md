@@ -59,12 +59,15 @@ On a managed machine with system Chromium, set `CHROMIUM_PATH` to its executable
 From the repository root, validate packaging and data operations:
 
 ```sh
+python3 scripts/test-smoke-cleanup.py -v
 docker build -t kitternel-light:local templates/light
 python3 scripts/docker-smoke.py --image kitternel-light:local
 python3 scripts/sqlite-backup-smoke.py --image kitternel-light:local
 ```
 
-See the [Docker guide](docs/deployment/docker.md) for the optional cloud proxy CA build secret. Test runners use uniquely named disposable Docker resources; do not substitute a real deployment volume into a smoke test. CI runs the same commands, with full frontend/Rust/browser gates in one job and packaging/storage gates in another. A local pass does not establish a remote GitHub Actions pass.
+See the [Docker guide](docs/deployment/docker.md) for the optional cloud proxy CA build secret. Cleanup regressions run without Docker and simulate removal failures. Docker fixtures report nonzero removal exits and exceptions, attempt every tracked resource, and fail the owning test if cleanup fails. Intentionally removed containers must be removed from the fixture tracking list; missing tracked resources are not silently accepted. Diagnostics identify the resource and exit code or exception type without copying raw command output. Test runners use uniquely named disposable Docker resources; do not substitute a real deployment volume into a smoke test. CI runs the same commands, with full frontend/Rust/browser gates in one job and packaging/storage gates in another. A local pass does not establish a remote GitHub Actions pass.
+
+The [Docker-first roadmap](docs/development/DOCKER-FIRST-ROADMAP.md) defines the focused PR sequence for standalone starter readiness.
 
 ## Architecture and dependency changes
 
