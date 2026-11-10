@@ -57,8 +57,20 @@ The final generation differs from that tested native/frontend project only in th
 
 ## PR 4: Verify the extracted Docker-first starter end to end
 
+Implemented on `test/standalone-docker-validation`: [standalone-docker-smoke.py](../../scripts/standalone-docker-smoke.py) creates a uniquely named fresh application outside the checkout, checks isolation/completeness, builds its image with `--no-cache`, and executes only the generated regression/Docker/recovery scripts. The Compose test now checks migration metadata and retains a modified greeting across graceful stop and forced container recreation. Scoped resource inventory and labelled helpers provide fallback cleanup after failures. See [the validation guide](STANDALONE-DOCKER-VALIDATION.md) for local/CI commands and limitations.
+
 Depends on PR 3. From a clean renamed extraction, build the canonical production image without cached application layers. Validate Compose configuration and start it with isolated disposable volumes.
 
 Acceptance: health and configurable port work; non-root/read-only operation and graceful SIGTERM pass; a changed SQLite value survives container removal/recreation; online backup and independent-volume restore retain expected application data; occupied/corrupt/unsafe recovery inputs fail. Exercise generated CI commands and verify cleanup. Document exact executed results and architecture limits. Do not substitute verification of the original repository for verification of the generated project.
+
+### PR 4 verification
+
+Executed on 2026-11-10 on Linux/amd64 with Docker 29.9.2, Compose 2.40.3, and Python 3.12.14. `python3 scripts/standalone-docker-smoke.py --proxy-ca "$CODEX_PROXY_CERT"` completed successfully for two fresh applications, `light-e2e-55568e22a2a5` and `light-e2e-993556d4048b`. The second run exercised the final command/child-process lifecycle implementation after interruption handling was strengthened. The optional CA was a BuildKit secret; TLS verification remained enabled.
+
+Both runs built all application stages without cache from generated directories with no target, node_modules, dist, source-checkout paths, or database artifacts. Each passed generated Compose configuration validation, five cleanup regressions, five target-path regressions, five Docker/Compose tests, and six backup/recovery tests. The Compose test verified migration `1|1`, a changed greeting surviving a new container ID, and clean SIGTERM stops before and after recreation. HTTP checks exercised actual compiled frontend assets and database-backed API responses. Recovery covered live WAL, standalone export, integrity/FK/migration metadata, independent restored application reads, preserved source data, and refusal cases.
+
+After both runs, a separate inventory confirmed zero matching containers, volumes, networks, and image tags. Temporary generated directories were removed; base images/build cache were retained without global pruning. Source regressions passed: nine orchestration/isolation/failure-cleanup tests, seven generator tests, and both five-test runner suites. `git diff --check` passed. Failure/timeout cleanup paths were simulated in unit tests, not by failing the daemon. A final stricter artifact precheck additionally rejects loose database/sidecar and local environment files; its generated-project checks passed in the focused suite.
+
+No application source, runtime dependencies, Dockerfile, or deployment-platform settings changed. Rust/frontend unit/lint suites and browser rendering were not rerun in this step; the clean image builds compiled the generated Rust release binary and typechecked/built its frontend. No native Windows/ARM run, remote CI result, production capacity/TLS/host-loss recovery, or platform deployment is claimed. The new CI job is configured but was not observed running remotely.
 
 No additional infrastructure, application authentication, or Advanced implementation belongs in these PRs. Platform deployment validation remains a later, separate task.

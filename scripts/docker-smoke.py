@@ -18,6 +18,12 @@ IMAGE = "kitternel-light:local"
 
 
 def docker(*arguments, check=True, environment=None):
+    namespace = (os.environ if environment is None else environment).get("SMOKE_RUN_ID")
+    if namespace and arguments and arguments[0] in ("run", "create"):
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", namespace):
+            raise ValueError("SMOKE_RUN_ID must be a lowercase resource identifier of at most 64 characters")
+        # Label even unnamed one-off helpers so an interrupted suite can be cleaned up.
+        arguments = (arguments[0], "--label", f"io.starter.smoke-run={namespace}", *arguments[1:])
     return subprocess.run(["docker", *arguments], text=True, capture_output=True,
                           check=check, env=environment, timeout=90)
 
@@ -180,6 +186,19 @@ class DockerSmoke(unittest.TestCase):
                 self.assertTrue(config["HostConfig"]["ReadonlyRootfs"])
                 self.assertEqual(config["HostConfig"]["CapDrop"], ["ALL"])
                 self.assertEqual(http_request(port, "/health/ready")[0], 200)
+                self.assertEqual(docker("exec", name, "sqlite3", "/data/kitternel.db",
+                                        "SELECT version, success FROM _sqlx_migrations;").stdout.strip(), "1|1")
+                docker("exec", name, "sqlite3", "/data/kitternel.db",
+                       "UPDATE greetings SET message = 'Compose retained data' WHERE id = 1;")
+                original_id = config["Id"]
+                self.stop_cleanly(name)
+                docker(*command, "up", "--detach", "--no-build", "--force-recreate", environment=environment)
+                replacement = docker(*command, "ps", "--quiet", "app", environment=environment).stdout.strip()
+                self.assertNotEqual(inspect(replacement)["Id"], original_id)
+                self.wait_ready(replacement)
+                self.assertEqual(json.loads(http_request(port, "/api/hello")[1]),
+                                 {"message": "Compose retained data"})
+                self.stop_cleanly(replacement)
             finally:
                 # This project name is unique to this test; never delete deployment volumes.
                 result = docker(*command, "down", "--volumes", environment=environment, check=False)
