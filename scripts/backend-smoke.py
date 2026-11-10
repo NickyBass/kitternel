@@ -12,8 +12,9 @@ import tempfile
 import sqlite3
 import unittest
 
+from smoke_paths import backend_binary
+
 BACKEND = Path(__file__).resolve().parents[1] / "templates/light/backend"
-BINARY = BACKEND / "target/debug/kitternel-light"
 
 
 class BackendSmoke(unittest.TestCase):
@@ -28,7 +29,7 @@ class BackendSmoke(unittest.TestCase):
                            FRONTEND_DIR=str(BACKEND.parent / "frontend/dist"))
         environment.update(overrides)
         process = subprocess.Popen(
-            [str(BINARY)], env=environment,
+            [str(backend_binary(BACKEND))], env=environment,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         self.addCleanup(self.cleanup_process, process)
