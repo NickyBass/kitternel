@@ -20,3 +20,5 @@
 **/*.pfx
 **/backups
 **/*.bak
+
+**/security-reports

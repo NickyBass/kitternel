@@ -20,6 +20,12 @@ Commit and review Cargo/npm lockfile changes, base image digests, toolchain pins
 
 The development-only minimatch override is documented in the README. Review its compatibility and remove it once the parent tools support a fixed release. OS packages are resolved at image build time to obtain repository security updates, so byte-for-byte build reproducibility is not claimed. No automated update service or image publication is configured by this starter.
 
+## Automated vulnerability policy
+
+The [scanning guide](docs/development/SECURITY-SCANNING.md) documents pinned RustSec, npm, and final-image scanners, local commands, triggers, triage, report sanitization, and exception review. RustSec vulnerabilities in the full lockfile block conservatively; informational warnings are separate. Production npm HIGH/CRITICAL and image HIGH/CRITICAL block. Dev-only npm and lower/unknown findings remain visible. Scanner/tool/database failures are incomplete scans, never clean passes. No vulnerability suppressions or automatic upgrades are configured.
+
+Reports are available as Actions artifacts by default. Code Scanning support has not been verified; SARIF upload requires explicit maintainer opt-in after checking repository visibility/plan/settings. Generated projects receive independent tooling and policy documentation. Dependency scanning complements application review and does not prove exploitability or production readiness.
+
 ## Operational responsibility
 
 SQLite WAL requires a local compatible filesystem, one application instance per database, short transactions, and serialized deployments. Provision UID/GID 10001 storage permissions; do not use world-writable data directories. Configure disk capacity monitoring, retention, consistent backups, protected off-host copies, and periodic restore drills. Backup files may contain all application data and must receive the same confidentiality protections as the live database.
