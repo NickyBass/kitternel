@@ -28,6 +28,11 @@ class GenerationTests(unittest.TestCase):
                                      "scripts/sqlite-backup.sh", "scripts/sqlite-restore.sh",
                                      *(f"scripts/{runner}" for runner in creator.RUNNERS)):
                         self.assertTrue((destination / relative).is_file(), relative)
+                    for helper in ("sqlite-backup.sh", "sqlite-restore.sh"):
+                        text = (destination / "scripts" / helper).read_text()
+                        for utility in ("dirname", "realpath", "mktemp", "rm", "sync", "ln"):
+                            self.assertIn(f"/usr/bin/gnu{utility}", text)
+                        self.assertIn('(GNU coreutils)', text)
                     manifest = tomllib.loads((destination / "backend/Cargo.toml").read_text())
                     self.assertEqual(manifest["package"]["name"], name)
                     lock = tomllib.loads((destination / "backend/Cargo.lock").read_text())

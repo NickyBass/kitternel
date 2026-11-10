@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the documented backup/restore helpers on isolated Docker volumes."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import importlib.util
 import json
@@ -42,8 +43,12 @@ class SQLiteBackupSmoke(unittest.TestCase):
                 failures.append(f"Volume cleanup raised {type(error).__name__} for {volume}")
         self.assertFalse(failures, "\n".join(failures))
 
-    def helper(self, command, snapshot, volume, check=True, database_path=None):
-        options = [] if database_path is None else ["--env", f"SQLITE_PATH={database_path}"]
+    def helper(self, command, snapshot, volume, check=True, database_path=None, utility_override=None, extra_options=()):
+        options = list(extra_options)
+        if utility_override:
+            utility, replacement = utility_override
+            options += ["--mount", f"type=bind,source={replacement},target=/usr/bin/gnu{utility},readonly"]
+        options += [] if database_path is None else ["--env", f"SQLITE_PATH={database_path}"]
         return base.docker("run", "--rm", "--read-only", "--no-healthcheck", "--network", "none", "--cap-drop", "ALL",
                            "--security-opt", "no-new-privileges:true", "--tmpfs", "/tmp:size=32m,mode=1777",
                            "--mount", f"source={volume},target=/data",
@@ -56,13 +61,89 @@ class SQLiteBackupSmoke(unittest.TestCase):
                            "--entrypoint", "sqlite3", base.IMAGE,
                            "-readonly", "/backups/verified.sqlite", sql).stdout.strip()
 
+    def test_gnu_identity_missing_tools_and_failure_propagation(self):
+        for utility in ("dirname", "realpath", "mktemp", "rm", "sync", "ln"):
+            version = base.docker("run", "--rm", "--read-only", "--network", "none",
+                                  "--entrypoint", f"/usr/bin/gnu{utility}", base.IMAGE, "--version")
+            self.assertIn("(GNU coreutils)", version.stdout)
+        name = self.fixture.start("gnu")
+        self.fixture.wait_ready(name)
+        with tempfile.TemporaryDirectory(prefix="gnu-recovery-") as temporary:
+            replacement = Path(temporary) / "replacement"
+            for command, volume in (("sqlite-backup", self.fixture.volume), ("sqlite-restore", self.restored)):
+                for mode, content, message in (
+                    (0o644, "", "missing or not executable"),
+                    (0o755, "#!/bin/sh\nexit 74\n", "Could not verify GNU utility"),
+                    (0o755, "#!/bin/sh\nprintf 'uutils coreutils\\n'\n", "not GNU coreutils"),
+                ):
+                    replacement.write_text(content)
+                    replacement.chmod(mode)
+                    result = self.helper(command, "absent.sqlite", volume, check=False,
+                                         utility_override=("ln", replacement))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(message, result.stderr)
+            # Fail sync before atomic publication; no artifact or temporary files may survive.
+            replacement.write_text('#!/bin/sh\nif [ "$1" = --version ]; then printf "sync (GNU coreutils) test\\n"; else exit 73; fi\n')
+            replacement.chmod(0o755)
+            result = self.helper("sqlite-backup", "failed.sqlite", self.fixture.volume, check=False,
+                                 utility_override=("sync", replacement))
+            self.assertEqual(result.returncode, 73)
+            listing = base.docker("run", "--rm", "--read-only", "--network", "none",
+                                  "--mount", f"source={self.backups},target=/backups,readonly",
+                                  "--entrypoint", "/bin/sh", base.IMAGE,
+                                  "-c", 'set -- /backups/* /backups/.*; for path; do [ ! -f "$path" ] || exit 1; done')
+            self.assertEqual(listing.returncode, 0)
+            Path(temporary).chmod(0o755)
+            # Poison ordinary utility names: explicit GNU operations must bypass PATH shadowing.
+            for utility in ("dirname", "realpath", "mktemp", "rm", "sync", "ln"):
+                poison = Path(temporary) / utility
+                poison.write_text("#!/bin/sh\nexit 89\n")
+                poison.chmod(0o755)
+            self.helper("sqlite-backup", "verified.sqlite", self.fixture.volume,
+                        extra_options=("--mount", f"type=bind,source={temporary},target=/poison,readonly",
+                                       "--env", "PATH=/poison:/usr/bin:/bin"))
+            failed_restore = self.helper("sqlite-restore", "verified.sqlite", self.restored, check=False,
+                                         utility_override=("sync", replacement))
+            self.assertEqual(failed_restore.returncode, 73)
+            base.docker("run", "--rm", "--read-only", "--network", "none",
+                        "--mount", f"source={self.restored},target=/data,readonly",
+                        "--entrypoint", "/bin/sh", base.IMAGE,
+                        "-c", 'for path in /data/* /data/.*; do [ ! -f "$path" ] || exit 1; done')
+            self.helper("sqlite-restore", "verified.sqlite", self.restored,
+                        database_path="/data/space $ unicode-è.db",
+                        extra_options=("--mount", f"type=bind,source={temporary},target=/poison,readonly",
+                                       "--env", "PATH=/poison:/usr/bin:/bin"))
+        self.fixture.stop_cleanly(name)
+
+    def test_concurrent_backups_publish_one_valid_snapshot(self):
+        name = self.fixture.start("concurrent")
+        self.fixture.wait_ready(name)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(self.helper, "sqlite-backup", "verified.sqlite",
+                                       self.fixture.volume, check=False) for _ in range(2)]
+            results = [future.result() for future in futures]
+        self.assertEqual(sum(result.returncode == 0 for result in results), 1,
+                         [(r.returncode, r.stderr) for r in results])
+        self.assertEqual(self.snapshot_query("PRAGMA integrity_check;"), "ok")
+        self.assertEqual(self.snapshot_query("SELECT message FROM greetings WHERE id=1;"),
+                         "Hello from Kitternel Light.")
+        listing = base.docker("run", "--rm", "--read-only", "--network", "none",
+                              "--mount", f"source={self.backups},target=/backups,readonly",
+                              "--entrypoint", "/bin/sh", base.IMAGE,
+                              "-c", 'for path in /backups/.verified.sqlite.*; do [ ! -e "$path" ] || exit 1; done')
+        self.assertEqual(listing.returncode, 0)
+        self.fixture.stop_cleanly(name)
+
     def test_online_snapshot_restores_to_separate_volume_and_preserves_source(self):
         name = self.fixture.start("live")
         live_port = self.fixture.wait_ready(name)
         base.docker("exec", name, "sqlite3", "/data/kitternel.db",
                     "UPDATE greetings SET message = 'Backed up greeting' WHERE id = 1;")
         base.docker("exec", name, "test", "-f", "/data/kitternel.db-wal")
+        metadata_sql = "SELECT version, hex(checksum), success FROM _sqlx_migrations ORDER BY version;"
+        metadata = base.docker("exec", name, "sqlite3", "/data/kitternel.db", metadata_sql).stdout.strip()
         self.helper("sqlite-backup", "verified.sqlite", self.fixture.volume)
+        self.assertEqual(self.snapshot_query(metadata_sql), metadata)
         self.assertEqual(self.snapshot_query("PRAGMA integrity_check;"), "ok")
         self.assertEqual(self.snapshot_query("PRAGMA foreign_key_check;"), "")
         self.assertEqual(self.snapshot_query("PRAGMA journal_mode;"), "delete")
@@ -93,6 +174,7 @@ class SQLiteBackupSmoke(unittest.TestCase):
         finally:
             self.fixture.volume = original_volume
         port = self.fixture.wait_ready(restored_name)
+        self.assertEqual(base.docker("exec", restored_name, "sqlite3", "/data/kitternel.db", metadata_sql).stdout.strip(), metadata)
         self.assertEqual(json.loads(base.http_request(port, "/api/hello")[1]), {"message": "Backed up greeting"})
         self.assertEqual(json.loads(base.http_request(live_port, "/api/hello")[1]), {"message": "Changed after snapshot"})
         rejected = self.helper("sqlite-restore", "verified.sqlite", self.restored, check=False)
