@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the documented backup/restore helpers on isolated Docker volumes."""
 import argparse
+from contextlib import closing
 import importlib.util
 import json
 import sqlite3
@@ -76,7 +77,7 @@ class SQLiteBackupSmoke(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="kitternel-snapshot-export-") as exported:
             target = Path(exported) / "verified.sqlite"
             base.docker("cp", f"{export_name}:/backups/verified.sqlite", str(target))
-            with sqlite3.connect(target.resolve().as_uri() + "?mode=ro", uri=True) as connection:
+            with closing(sqlite3.connect(target.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
                 self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
                 self.assertEqual(connection.execute("SELECT message FROM greetings WHERE id = 1").fetchone(), ("Backed up greeting",))
         duplicate = self.helper("sqlite-backup", "verified.sqlite", self.fixture.volume, check=False)
