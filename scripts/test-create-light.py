@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Exercise standalone project creation without application toolchains or Docker."""
+"""Test standalone generation; opt into pinned Rust formatting with --rustfmt."""
 import importlib.util
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import tomllib
@@ -14,10 +16,17 @@ creator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(creator)
 
 
+# Cover imports before axum, between dependencies, and after std/tokio/tower.
+FORMAT_NAMES = ("a-app", "audit-notes-7a", "maple-notes", "sunrise-notes", "zebra-notes")
+RUN_RUSTFMT = "--rustfmt" in sys.argv
+if RUN_RUSTFMT:
+    sys.argv.remove("--rustfmt")
+
+
 class GenerationTests(unittest.TestCase):
     def test_complete_customized_project_and_no_source_layout_dependencies(self):
         with tempfile.TemporaryDirectory() as temporary:
-            for name in ("garden-notes", "kitternel-light", "root", "a-very-long-application-name"):
+            for name in ("garden-notes", "kitternel-light", "root", "a-very-long-application-name", *FORMAT_NAMES):
                 with self.subTest(name=name):
                     destination = creator.generate(name, Path(temporary) / name)
                     for relative in ("backend/src/main.rs", "backend/Cargo.lock", "backend/build.rs",
@@ -33,6 +42,13 @@ class GenerationTests(unittest.TestCase):
                         for utility in ("dirname", "realpath", "mktemp", "rm", "sync", "ln"):
                             self.assertIn(f"/usr/bin/gnu{utility}", text)
                         self.assertIn('(GNU coreutils)', text)
+                    # An application import must not share a rustfmt sorting group
+                    # with dependencies whose order changes after customization.
+                    crate = name.replace("-", "_")
+                    for path in (destination / "backend").rglob("*.rs"):
+                        for group in path.read_text().split("\n\n"):
+                            if f"use {crate}::" in group:
+                                self.assertEqual(group.count("use "), 1, path)
                     manifest = tomllib.loads((destination / "backend/Cargo.toml").read_text())
                     self.assertEqual(manifest["package"]["name"], name)
                     lock = tomllib.loads((destination / "backend/Cargo.lock").read_text())
@@ -61,7 +77,7 @@ class GenerationTests(unittest.TestCase):
                                     if not link.startswith(("https://", "http://", "mailto:", "#")):
                                         target = link.split("#", 1)[0]
                                         self.assertTrue((path.parent / target).exists(), f"Broken generated link: {link}")
-                            if name == "garden-notes" and path.name != "LICENSE":
+                            if name != "kitternel-light" and path.name != "LICENSE":
                                 self.assertNotIn("kitternel", text.lower(), path)
                     self.assertFalse((destination / ".git").exists())
                     self.assertFalse((destination / "backend/target").exists())
@@ -152,6 +168,19 @@ class GenerationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "ordinary source file"):
                     creator.generate("garden-notes", destination)
             self.assertFalse(destination.exists())
+
+
+@unittest.skipUnless(RUN_RUSTFMT, "Use --rustfmt for pinned Rust formatting integration tests")
+class GeneratedFormattingTests(unittest.TestCase):
+    def test_generated_names_pass_rustfmt(self):
+        with tempfile.TemporaryDirectory(prefix="generated-format-") as temporary:
+            for name in FORMAT_NAMES:
+                with self.subTest(name=name):
+                    destination = creator.generate(name, Path(temporary) / name)
+                    result = subprocess.run(["cargo", "fmt", "--all", "--", "--check"],
+                                            cwd=destination / "backend", text=True,
+                                            capture_output=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

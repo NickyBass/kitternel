@@ -1,5 +1,6 @@
-use axum::{Router, routing::get};
 use kitternel_light::server::{self, Settings};
+
+use axum::{Router, routing::get};
 use std::{io, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},

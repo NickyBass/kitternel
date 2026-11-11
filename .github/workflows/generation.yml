@@ -20,6 +20,12 @@ jobs:
           python3 scripts/test-create-light.py -v
           python3 scripts/test-standalone-docker.py -v
 
+      - name: Generated Rust formatting (pinned toolchain)
+        run: |
+          toolchain=$(python3 -c 'import tomllib; print(tomllib.load(open("templates/light/backend/rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
+          rustup toolchain install "$toolchain" --profile minimal --component rustfmt
+          python3 scripts/test-create-light.py --rustfmt -v
+
   standalone-docker:
     needs: generate
     runs-on: ubuntu-24.04

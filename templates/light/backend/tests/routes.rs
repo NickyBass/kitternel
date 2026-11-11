@@ -1,8 +1,9 @@
+use kitternel_light::{AppState, app, db};
+
 use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
-use kitternel_light::{AppState, app, db};
 use tower::ServiceExt;
 
 async fn fixture() -> (tempfile::TempDir, AppState) {
