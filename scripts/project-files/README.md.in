@@ -28,7 +28,7 @@ Migrations are not automatically reversed; expect interruption and verify compat
 
 ## Development and verification
 
-Install rustup (the backend pins its toolchain), a C compiler/linker, Node at `frontend/.node-version`, npm 11, and Python 3 with SQLite support. Docker-only builds need no host Rust/Node installation.
+Install rustup (the backend pins its toolchain), a C compiler/linker, Node at `frontend/.node-version`, npm 11, and Python 3.11+ with SQLite support. Docker-only builds need no host Rust/Node installation.
 
 ```sh
 cd frontend

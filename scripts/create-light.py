@@ -14,6 +14,7 @@ RUNNERS = (
     "backend-smoke.py", "browser-smoke.py", "docker-smoke.py", "sqlite-backup-smoke.py", "sqlite-upgrade-smoke.py",
     "migration-build-smoke.py", "smoke_paths.py", "test-smoke-paths.py", "test-smoke-cleanup.py",
     "security-scan.py", "security-tools.json", "install-security-tools.sh", "test-security-scan.py",
+    "check-toolchain-pins.py", "test-toolchain-pins.py",
 )
 # Identity substitutions are limited to these known first-party text files.
 IDENTITY_FILES = {

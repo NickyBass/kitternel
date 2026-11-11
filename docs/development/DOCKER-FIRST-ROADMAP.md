@@ -213,3 +213,46 @@ format gate was weakened. Native/frontend unit or browser suites were not rerun;
 Docker builds compiled Rust and typechecked/built the frontend. No incompatible or
 breaking migration rollback, real production cutover, off-host recovery, remote CI,
 Windows/ARM or zero-loss disaster-recovery guarantee is claimed. No Step 7B.4 work.
+
+## Step 7B.4: Offline toolchain and dependency pin consistency
+
+Branch: `test/toolchain-pin-consistency`. A Python 3.11+ standard-library checker
+reads the existing source-template or standalone declarations without network,
+external tool execution or file rewriting. The generator copies it and its focused
+regressions; the existing application CI runs them from the project root before
+Node installation/builds. No new version manifest or update framework is introduced.
+
+Validated relationships: selected Rust/Docker/explicit Cargo/security-install
+compiler; MSRV no greater than selected Rust; Node Docker/CI readers and supported
+engine ranges; npm metadata/security CI; local package identities; scanner installer
+manifest selections, locked cargo-audit install, checksum format/verification wiring;
+current scan-guide and explicit setup-version claims. Git SQLx revisions are checked
+against lock sources when used; a future published dependency is allowed. SQLite
+binding versions and optional minimatch overrides are inventory, not permanent pins.
+The checker does not resolve Cargo/npm constraints, authenticate checksums/digests,
+prove MSRV compatibility or perform security scans. Known-layout extraction and
+common stable Node range support are documented; unsupported syntax fails explicitly.
+
+Executed verification on 2026-11-11:
+
+- Source checker passed. Twenty-one positive/negative tests passed, using only
+  disposable declaration copies. Tests cover valid ranges, version drift, checksums,
+  installer guards, legitimate updates, document claims, CLI exit diagnostics and
+  file-content/mtime invariance. Empty-PATH execution and blocked socket/subprocess
+  calls demonstrate the absence of external tool/network requirements.
+- Generator suite passed ten tests with its optional five-name rustfmt integration;
+  Python/Git-only mode passed nine tests with that integration skipped. Existing
+  standalone orchestration (9) and security-policy regressions (11) passed.
+- A fresh `maintenance-notes` project outside the checkout ran its own checker and
+  all 21 copied regressions with PATH empty, plus 11 copied security-policy tests.
+  Source and generated workflows passed actionlint 1.7.12. Python syntax and diff
+  whitespace checks passed; no installed application/tool versions were changed.
+- Known unrelated `maintenance-notes` rustfmt wrapping failure was reproduced with
+  exit 1 in config.rs while its pin checker passed. It remains an outstanding
+  pre-alpha defect; formatting gates were not weakened.
+
+No dependency resolution/update, scanner/archive download, Docker build/runtime,
+frontend build/unit/browser suite, native Rust compilation/test suite, or remote CI
+execution is claimed for this development-validation-only change. Runtime source,
+Docker images/digests, dependency locks, migrations, tool pins and vulnerability
+policies remain unchanged. Step 7B.5 is separate work.

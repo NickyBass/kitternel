@@ -50,6 +50,56 @@ installs the exact audited npm version. `packageManager` records a selection but
 not itself install npm. Check `node --version` and `npm --version` locally. Scanner
 version mismatches fail rather than silently changing enforcement.
 
+## Offline consistency check
+
+From this project's root, with Python 3.11+ only:
+
+```sh
+python3 scripts/check-toolchain-pins.py
+python3 scripts/test-toolchain-pins.py -v
+```
+
+The read-only checker runs without network, Rust, Node or Docker. CI runs it before
+installing frontend dependencies or compiling code. It selects this application's
+own files; it does not compare your versions with an upstream starter. Exit 0 means
+the checked relationships agree; nonzero prints affected files, observed values
+and correction hints. Tests mutate disposable declaration copies, not project files.
+
+Update the selected Rust file or Node file first, then the related Docker/installer
+and metadata declarations in the version map. For scanners, start with
+scripts/security-tools.json and coordinate the manifest-driven installer, current
+scan-guide introduction and any explicit npm CI installation. Resolve a legitimate
+mismatch by updating/reviewing the related files, not by automatically rewriting
+pins or weakening checks. Intentional workflow/installer redesigns may require a
+small update to the narrowly targeted extraction rules.
+
+Checks cover selected Rust versus Docker/explicit Cargo/security-install compiler,
+MSRV no higher than the selected compiler, exact Node pins versus Docker/CI readers,
+selected Node membership in manifest/lockfile engine ranges, npm metadata/security
+installation, package identities, scanner installer selections/locked installation,
+Trivy checksum format/verification wiring, current scan-guide version claims and
+explicit current Rust/Node setup instructions when present in README/CONTRIBUTING.
+Initial dated snapshots in this guide are historical and are not enforced as current
+version requirements. SQLx registry declarations need a registry lock entry; if
+SQLx uses a full Git revision, its lock source must agree;
+a future published dependency is permitted. SQLite binding resolutions and the
+optional minimatch override are reported, not fixed forever by the checker.
+
+MSRV is a floor, not an exact compiler pin. An engine range can permit several Node
+versions. Cargo constraints need not equal resolved lockfile versions. This checker
+does not resolve Cargo/npm dependencies, prove lockfile freshness for every library,
+validate a replacement SQLx release, or require temporary overrides. Stable numeric
+pins and common Node comparator, OR, caret, tilde, wildcard and numeric hyphen ranges
+are supported; unsupported range syntax is reported explicitly rather than guessed.
+It is not a complete npm-semver/YAML/shell parser. CI readers/installer expressions
+are checked for the known project layout, not arbitrary workflow semantics.
+
+A 64-hex checksum declaration is **not** proof that the checksum belongs to the
+selected release: verify authenticity against official release metadata separately.
+The checker never downloads an archive or runs an installer/scanner. It cannot prove
+Docker digest provenance, MSRV build compatibility, dependency security or successful
+deployment. Continue running the appropriate builds, tests and audits below.
+
 ## Rust toolchain and libraries
 
 Run native Cargo commands from `backend`, so rustup selects its pinned toolchain.
