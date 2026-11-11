@@ -256,3 +256,97 @@ frontend build/unit/browser suite, native Rust compilation/test suite, or remote
 execution is claimed for this development-validation-only change. Runtime source,
 Docker images/digests, dependency locks, migrations, tool pins and vulnerability
 policies remain unchanged. Step 7B.5 is separate work.
+
+## Step 7B.5: Standalone developer workflow and onboarding
+
+Branch: `docs/generated-developer-workflow`. Generated README now gives concise
+Docker/native quick starts and a linked module map. CONTRIBUTING covers independent
+Git ownership, working directories/configuration, opt-in backend/frontend edits,
+immutable migration development, checks and safe troubleshooting. AGENTS adds the
+current module map and validation entry points while preserving the owner's freedom
+to evolve the application. Detailed updates, releases and recovery stay in the
+existing MAINTENANCE guide. No application source, migrations, dependencies, tool
+pins, generator behavior or security policy changed.
+
+Generator regressions validate generated relative links and cross-document heading
+anchors, referenced script/source paths, npm script names, identity substitution,
+absence of placeholders and inherited Git metadata. Existing safety tests remain.
+
+Executed verification on 2026-11-11:
+
+- Generator suite: 11 tests passed including optional five-name rustfmt integration;
+  Python/Git-only mode: 10 passed, one optional integration skipped. Pin checker and
+  21 regressions passed, as did 11 security-policy, 9 standalone-orchestration and
+  5 copied smoke-path regressions. Python syntax, workflow actionlint 1.7.12 and
+  diff whitespace checks passed.
+- A fresh `dev-notes` application outside the checkout had no inherited Git history
+  or remotes. Git initialization, staged review and an initial commit succeeded;
+  synthetic local env/database/build/report files were ignored and .env.example
+  remained trackable. Its copied pin checker and all 21 copied regressions passed.
+- In that independent application, locked Cargo check/Clippy/tests/build and format
+  checks passed (21 Rust tests). Locked npm install, typecheck/lint/tests/build
+  passed (5 frontend tests), using the selected tools and isolated build/cache paths.
+- Documented native startup created the default database directory, served built
+  assets and API, and passed readiness. Vite served its development entry and
+  proxied API/readiness correctly. The documented read-only Python database query
+  returned integrity `ok` and the applied migration metadata. Owned processes were
+  stopped with SIGTERM; Rust exited cleanly. Seven native smoke tests passed.
+- Only the disposable copy received the illustrative backend/frontend edits and
+  corresponding assertions. Format plus all 21 Rust tests, and frontend typecheck,
+  lint, 5 tests and production build passed afterwards. No illustrative SQL migration
+  was applied; schema-change/upgrade behavior was not rehearsed in this task.
+- Generated Compose configuration passed. An initial invalid synthetic .env fixture
+  was corrected before retrying; Compose reads that file even though Rust does not
+  load it automatically. Temporary Git/source/build/database resources were scoped
+  to this audit's disposable application; no temporary repository was pushed.
+
+Known `maintenance-notes` config.rs wrapping failure was reproduced with rustfmt
+exit 1 and deliberately left unchanged; no formatting gate was weakened. Docker
+images/runtime/recovery, browser automation, live security scans and remote CI were
+not run for this documentation change. Compose syntax and native startup do not
+prove container runtime or deployment behavior. No platform integrations or Step 8
+work are included.
+
+### Step 7B.5 follow-up: APT and browser download reliability
+
+After the original documentation validation, the maintainer supplied three failed
+GitHub job archives. The light job failed resolving azure.archive.ubuntu.com during
+Playwright dependency installation; both standalone jobs failed resolving Ubuntu
+archive/security hosts. APT then continued with missing indexes and reported that
+packages were unavailable. These logs do not demonstrate an application-code defect
+or identify the underlying DNS infrastructure fault.
+
+The authorized follow-up keeps the same pinned images, packages and application
+code. Docker APT commands select three download retries; update uses
+`APT::Update::Error-Mode=any` so incomplete indexes stop the build. The disposable
+CI runner uses the same APT settings. Browser installation has at most three
+attempts with ten-second delays, still bounded by the existing job deadline.
+Persistent failures remain failures; real browser tests are not skipped or retried
+as a substitute for installation. No resolver/mirror/signature/TLS changes are made.
+
+Verification on 2026-11-11:
+
+- Generator suite: 13 tests passed including pinned rustfmt integration. New tests
+  execute the generated workflow's Bash block with controlled commands: first-try
+  success, recovery on attempt three, exhausted retries, and APT-config failure.
+  They also execute the Docker RUN chain with controlled package-command failures
+  to verify that subsequent package/user operations stop.
+- In the actual pinned Ubuntu image, a disposable localhost repository probe
+  returned exit 0 for ordinary APT update and exit 100 with strict error mode.
+  It used isolated temporary source/list paths and installed nothing.
+- `python3 scripts/standalone-docker-smoke.py --proxy-ca "$CODEX_PROXY_CERT"`
+  passed: fresh external generated application, uncached canonical image build,
+  Compose validation, 5 cleanup and 5 binary-path tests, 5 Docker runtime tests,
+  and 8 recovery tests. These include health/API/assets, non-root/read-only runtime,
+  graceful shutdown, recreation persistence, backup/restore, concurrent publication
+  and unsafe-input refusal. Scoped resource inventory and cleanup passed.
+- Offline pin checker and 21 regressions, 11 security-policy, 9 orchestration and
+  5 source cleanup regressions passed. Source and fresh generated workflows passed
+  actionlint 1.7.12; Python syntax and diff whitespace checks passed.
+
+This verifies local resilience/error handling and Docker behavior, not repair of a
+persistent GitHub DNS outage. Real Playwright installation/automation on a hosted
+runner and new remote CI outcomes remain unverified; no live vulnerability scans
+were run. Application Rust/frontend unit suites were not rerun for this follow-up;
+the clean Docker build compiled Rust and built the frontend. The separately known
+personalized config.rs formatting defect remains unchanged.

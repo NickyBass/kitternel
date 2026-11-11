@@ -57,6 +57,21 @@ jobs:
         run: python3 ../../../scripts/backend-smoke.py
       - name: Install browser
         working-directory: templates/light/frontend
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99ci-downloads >/dev/null <<'EOF'
+          Acquire::Retries "3";
+          APT::Update::Error-Mode "any";
+          EOF
+          for attempt in 1 2 3; do
+            if npx playwright install --with-deps chromium; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Browser installation failed after 3 attempts; inspect APT/DNS and download errors above."
+              exit 1
+            fi
+            echo "::warning::Browser installation failed (attempt $attempt/3); retrying in 10 seconds."
+            sleep 10
+          done
       - name: Real backend browser tests
         run: python3 ../../../scripts/browser-smoke.py

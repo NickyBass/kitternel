@@ -24,9 +24,15 @@ The certificate is supplied only as the canonical Dockerfile's `proxy_ca` BuildK
 6. Exercise live WAL snapshot/export, integrity and migration checks, standalone snapshot reads, restore to a separate named volume, application reads from both source and restored databases, and refusal of unsafe/corrupt/occupied recovery inputs.
 7. Verify that the suites removed every temporary container, volume, and network, remove the unique image tag, and remove the temporary generated directory.
 
-The five Docker tests include the expanded Compose lifecycle test. The six backup runner tests include four Docker recovery tests and two isolated cleanup simulations. The generated path and cleanup regression suites have five tests each.
+The five Docker tests include the expanded Compose lifecycle test. The eight backup runner tests include six Docker recovery tests and two isolated cleanup simulations. The generated path and cleanup regression suites have five tests each.
 
 ## Isolation, failures, and cleanup
+
+The canonical Dockerfile retries APT downloads and rejects failed index updates
+before attempting package installation. If logs say packages have no installation
+candidate, inspect earlier update/DNS/repository errors rather than assuming the
+packages were removed. Persistent network failures still fail validation; retries
+do not bypass repository signatures or replace the clean build and runtime checks.
 
 Each invocation creates an application name `light-e2e-<random-id>` and a matching unique image tag. Each fixture adds another unique suffix. Compose is explicitly given that fixture's project name, an available loopback port, the generated Compose file, and an override selecting the newly built image. Volumes are fresh and belong only to that fixture. Inherited Compose settings and HOST_PORT are not reused.
 

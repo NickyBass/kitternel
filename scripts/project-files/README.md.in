@@ -1,14 +1,38 @@
 # @DISPLAY@
 
-Standalone Rust/Axum/SQLite and React/TypeScript application. One Rust process serves the compiled frontend, API, and health endpoints. Authentication, authorization, sessions, and CSRF defenses are not implemented. This is a foundation preview, not a production-readiness guarantee.
+Independent Rust/Axum/SQLite and React/TypeScript application. You own its source and
+may change its initial choices. No original starter checkout, shared runtime or
+upstream synchronization is required. Authentication, authorization, sessions and
+CSRF defenses are absent: this is a foundation preview, not a production guarantee.
 
-For independent toolchain, dependency, image and security updates, read
-[MAINTENANCE.md](MAINTENANCE.md). You own this application and may deliberately change
-its initial choices; no original starter checkout or synchronization is required.
+## First day
+
+1. Inspect the map below and [initialize your own Git repository](CONTRIBUTING.md#1-own-your-repository).
+2. Choose Docker for the complete application, or native development for editing.
+3. Follow [backend/frontend examples, tests and migrations](CONTRIBUTING.md).
+4. Use [MAINTENANCE.md](MAINTENANCE.md), [security](SECURITY.md), and
+   [release/recovery procedures](MAINTENANCE.md#releases-updates-and-recovery) before updates.
+
+Generation does not initialize Git or copy source Git history. GitHub is optional;
+use any host, adapting `.github/workflows` if your provider differs.
+
+## Project map
+
+| Path | Responsibility |
+| --- | --- |
+| [backend/src/main.rs](backend/src/main.rs), [lib.rs](backend/src/lib.rs) | Startup and application/state composition |
+| [backend/src/routes](backend/src/routes) | Axum routes, health and greeting handlers |
+| [backend/src/config.rs](backend/src/config.rs), [db.rs](backend/src/db.rs) | Validated environment and SQLite pool/migrations |
+| [backend/migrations](backend/migrations), [backend/tests](backend/tests) | Immutable SQL history and Rust integration tests |
+| [frontend/src/main.tsx](frontend/src/main.tsx), [App.tsx](frontend/src/App.tsx) | React bootstrap and current UI; no components directory yet |
+| [frontend/src/api.ts](frontend/src/api.ts), [App.test.tsx](frontend/src/App.test.tsx) | API integration and colocated UI tests |
+| [Dockerfile](Dockerfile), [compose.yaml](compose.yaml) | Multi-stage build, single Rust runtime and persistent volume |
+| [scripts](scripts), [.github/workflows](.github/workflows) | Independent smoke/recovery, pin/security checks and CI |
+| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | Human and AI development workflow |
 
 ## Docker first
 
-From this project's root, using Docker with BuildKit and Compose v2:
+From this application root, with Docker BuildKit and Compose v2:
 
 ```sh
 docker build -t @NAME@:local .
@@ -17,82 +41,67 @@ curl --fail http://127.0.0.1:8080/health/ready
 curl --fail http://127.0.0.1:8080/api/hello
 ```
 
-Open http://localhost:8080. The Compose project is `@NAME@`; keep that identity stable to retain its data volume. Set `HOST_PORT=8081` if needed. The container uses UID/GID 10001, a read-only application filesystem, and persistent `/data/@NAME@.db` in the `light-data` volume. Mount the entire directory, including WAL/SHM. Use local compatible storage, one app instance, and serialized redeployments. Bind mounts require explicit UID/GID permissions; never use chmod 777. Do not put the database on network storage.
+Open http://localhost:8080. For another host port use
+`HOST_PORT=8081 docker compose up -d --no-build --wait` in a POSIX shell. Container
+port remains 8080. Compose uses project `@NAME@`; preserve its identity and actual
+`light-data` volume across updates. Data lives at `/data/@NAME@.db`, including WAL/SHM.
+UID/GID is 10001, the root filesystem is read-only, and only local writable persistent
+storage is supported. One SQLite instance; serialize replacements. Do not use
+`down --volumes` on deployment storage. HTTPS requires your trusted reverse proxy.
 
-`docker compose stop` stops the app. `docker compose down` retains data; **do not use `down --volumes` on deployment storage**. Readiness checks SQLite; liveness only checks HTTP. A health status does not itself restart an unhealthy container. SIGTERM drains requests for ten seconds by default; keep the container grace period longer. HTTPS requires a separately configured trusted reverse proxy; forwarded headers confer no application trust.
+## Native development
 
-For updates, image retention, rollback and SQLite recovery, follow
-[Releases, Updates and Recovery](MAINTENANCE.md#releases-updates-and-recovery).
-That runbook selects explicit local images without changing the persistent volume.
-Migrations are not automatically reversed; expect interruption and verify compatibility.
-
-## Development and verification
-
-Install rustup (the backend pins its toolchain), a C compiler/linker, Node at `frontend/.node-version`, npm 11, and Python 3.11+ with SQLite support. Docker-only builds need no host Rust/Node installation.
+Install [Git](https://git-scm.com/downloads/), [rustup](https://rustup.rs/) with the
+pinned [Rust toolchain](backend/rust-toolchain.toml), a native C compiler/linker,
+[Node.js](https://nodejs.org/en/download) matching [this pin](frontend/.node-version),
+npm selected by [packageManager](frontend/package.json), and
+[Python 3.11+](https://www.python.org/downloads/) with SQLite support.
+Check `node --version`/`npm --version` against those files; from backend,
+`rustup show active-toolchain` identifies the selected Rust environment.
+Docker-only builds do not need host Rust/Node. From this application's root:
 
 ```sh
+python3 scripts/check-toolchain-pins.py
 cd frontend
 npm ci --no-audit --no-fund
-npm run typecheck
-npm run lint
-npm test
 npm run build
 cd ../backend
-cargo fmt --all -- --check
-cargo clippy --locked --all-targets --all-features -- -D warnings
-cargo test --locked
-cargo build --locked
 cargo run --locked
 ```
 
-For hot reload, run `npm run dev` from `frontend` while the backend runs on 8080. `API_PROXY_TARGET` changes the development proxy. `.env.example` is a reference, not automatically loaded by the backend. Relative runtime paths depend on the process working directory: launch the native backend from `backend`. Defaults and validation are in `backend/src/config.rs`.
-
-After building frontend and backend, run from `backend`:
+Keep that terminal running. In a second terminal, from this application's root:
 
 ```sh
-python3 ../scripts/test-smoke-paths.py -v
-python3 ../scripts/backend-smoke.py
-python3 ../scripts/migration-build-smoke.py
-cd ../frontend
-npx playwright install --with-deps chromium
-python3 ../scripts/browser-smoke.py
+cd frontend
+npm run dev
 ```
 
-Process/signal tests target Unix. Browser tests may use `CHROMIUM_PATH` instead of downloading Chromium. Build and runners must share their working directory and Cargo configuration: relative `CARGO_TARGET_DIR` follows Cargo's cwd rules. A missing selected debug binary fails without fallback. Run offline metadata only after dependencies/toolchain have been installed.
+Open http://localhost:5173 for Vite hot reload. Rust serves the last built frontend
+at http://localhost:8080; build frontend once before starting Rust even when using
+Vite, because startup checks for compiled assets. Rust code changes need a backend
+restart; no backend watcher is installed. Vite proxies `/api` and `/health` to Rust.
 
-After building the image, run from the project root:
-
-```sh
-python3 scripts/test-smoke-cleanup.py -v
-python3 scripts/docker-smoke.py --image @NAME@:local -v
-python3 scripts/sqlite-backup-smoke.py --image @NAME@:local -v
-```
-
-These scripts use disposable resources, never your deployment volume. The included GitHub Actions workflow runs the same checks after you initialize a new Git repository and push it. No original source repository is required. Review `AGENTS.md`, `CONTRIBUTING.md`, and `SECURITY.md` before changing code.
+Native defaults, when launched from `backend`, are `data/@NAME@.db` and
+`../frontend/dist`. Rust reads process environment; `.env.example` is a reference,
+not automatically loaded. `PORT` controls Rust; `API_PROXY_TARGET` controls Vite's
+backend target. Docker `HOST_PORT` only controls the published port. See
+[workflow differences and checks](CONTRIBUTING.md#2-run-and-understand-the-application)
+and [troubleshooting](CONTRIBUTING.md#7-troubleshooting).
 
 ## Consistent backup and restore
 
-Use the [SQLite backup and recovery runbook](MAINTENANCE.md#3-create-and-retain-a-consistent-sqlite-backup).
-Never copy only a live database file; use the image's existing helpers, verify the
-snapshot, and restore into an independent volume before trusting it. Keep the
-original data and protected off-host backups. A successful backup command alone
-does not establish recovery readiness. Application rollback and data recovery
-have different compatibility and write-loss implications.
+Never copy only an active SQLite file. Follow the
+[backup/recovery runbook](MAINTENANCE.md#3-create-and-retain-a-consistent-sqlite-backup),
+restore into an independent volume, and preserve the original and off-host copies.
+A successful backup, healthy container or passing scanner alone is not proof of
+recoverability. [Updates and rollback](MAINTENANCE.md#releases-updates-and-recovery)
+require explicit image retention and database compatibility assessment.
 
-## Identity and license
+## Identity, security and license
 
-Project/package/binary/image: `@NAME@`; Rust imports use hyphens converted to underscores. Display name: @DISPLAY@. Keep the upstream MIT copyright notice in `LICENSE`; add your own notices for your changes as appropriate. Included CI configuration and tests are verification tools, not evidence that this generated application's build, deployment, or CI has already passed.
-
-Security tooling and the independent scheduled/PR workflow are documented in [SECURITY-SCANNING.md](SECURITY-SCANNING.md). Docker tests and image scanning share the same canonical build. Review blocking findings before release; no automatic fixes or suppressions are applied.
-
-For dependency/base-image upgrades with unchanged migration files, preserve trusted local previous/replacement image tags and run `python3 scripts/sqlite-upgrade-smoke.py --previous-image PREVIOUS_IMAGE --image REPLACEMENT_IMAGE`. It verifies retained data and exact existing migration metadata on its own disposable volume; both images must use the same database path. It never opens deployment storage and is not a rollback tool.
-
-### Recovery utility requirements
-
-The container's SQLite backup/restore helpers explicitly invoke `/usr/bin/gnudirname`,
-`gnurealpath`, `gnumktemp`, `gnurm`, `gnusync`, and `gnuln`, checking each executable's
-GNU coreutils identity before accessing storage. They do not fall back to PATH or
-the default uutils provider. These names are supplied by the current Ubuntu runtime;
-running the helpers directly on other hosts/images requires those executables.
-No additional package is installed. This affects maintenance only, not application startup.
-The uutils package remains installed and its security findings remain reportable.
+Project/package/binary/image: `@NAME@`; Rust crate imports normalize hyphens to
+underscores. Display name: @DISPLAY@. Keep the upstream [MIT notice](LICENSE);
+add your own notices for your modifications. Configure your own private reporting
+contact in [SECURITY.md](SECURITY.md). [SECURITY-SCANNING.md](SECURITY-SCANNING.md)
+explains independent scanners, policy and reports. Tests/CI are included tools,
+not evidence that your own checks or deployments have already passed.

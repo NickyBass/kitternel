@@ -4,8 +4,10 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 import tempfile
 import tomllib
@@ -25,6 +27,97 @@ if RUN_RUSTFMT:
 
 
 class GenerationTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("bash"), "Browser CI uses Bash on Linux")
+    def test_generated_browser_installation_retries_and_failure_propagation(self):
+        with tempfile.TemporaryDirectory(prefix="browser-install-") as temporary:
+            root = Path(temporary)
+            project = creator.generate("ci-notes", root / "application")
+            workflow = (project / ".github/workflows/ci.yml").read_text()
+            step = workflow.split("      - name: Install browser\n", 1)[1].split("\n      - name:", 1)[0]
+            command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+            tools = root / "tools"
+            tools.mkdir()
+            stub = tools / "stub"
+            stub.write_text(f"#!{sys.executable}\n" + textwrap.dedent('''\
+                import json, os, pathlib, sys
+                root = pathlib.Path(os.environ['FIXTURE'])
+                name = pathlib.Path(sys.argv[0]).name
+                with (root / 'calls').open('a') as log:
+                    log.write(json.dumps([name, *sys.argv[1:]]) + '\\n')
+                if name == 'sudo':
+                    assert sys.argv[1:] == ['tee', '/etc/apt/apt.conf.d/99ci-downloads']
+                    if os.environ['CONFIG_FAIL'] == '1':
+                        sys.exit(42)
+                    (root / 'apt-config').write_text(sys.stdin.read())
+                elif name == 'npx':
+                    assert sys.argv[1:] == ['playwright', 'install', '--with-deps', 'chromium']
+                    counter = root / 'attempts'
+                    attempt = int(counter.read_text()) + 1 if counter.exists() else 1
+                    counter.write_text(str(attempt))
+                    sys.exit(37 if attempt <= int(os.environ['FAILURES']) else 0)
+                else:
+                    assert name == 'sleep' and sys.argv[1:] == ['10']
+                '''))
+            stub.chmod(0o755)
+            for name in ("sudo", "npx", "sleep"):
+                (tools / name).symlink_to(stub)
+            for failures, config_fail, attempts, sleeps, success in (
+                    (0, False, 1, 0, True), (2, False, 3, 2, True),
+                    (3, False, 3, 2, False), (0, True, 0, 0, False)):
+                with self.subTest(failures=failures, config_fail=config_fail):
+                    fixture = root / f"case-{failures}-{config_fail}"
+                    fixture.mkdir()
+                    environment = {**os.environ, "PATH": str(tools), "FIXTURE": str(fixture),
+                                   "FAILURES": str(failures), "CONFIG_FAIL": str(int(config_fail))}
+                    result = subprocess.run([shutil.which("bash"), "-e", "-c", command],
+                                            env=environment, text=True, capture_output=True, timeout=10)
+                    self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
+                    calls = [json.loads(line) for line in (fixture / "calls").read_text().splitlines()]
+                    self.assertEqual(sum(call[0] == "npx" for call in calls), attempts)
+                    self.assertEqual(sum(call[0] == "sleep" for call in calls), sleeps)
+                    if not config_fail:
+                        config = (fixture / "apt-config").read_text()
+                        self.assertIn('Acquire::Retries "3";', config)
+                        self.assertIn('APT::Update::Error-Mode "any";', config)
+                    if failures == 3:
+                        self.assertIn("::error::Browser installation failed after 3 attempts", result.stdout)
+
+    @unittest.skipUnless(shutil.which("sh"), "Docker RUN uses a POSIX shell")
+    def test_runtime_apt_failure_stops_later_package_and_user_operations(self):
+        dockerfile = (creator.ROOT / "templates/light/Dockerfile").read_text()
+        command = dockerfile.split(" AS runtime\nRUN ", 1)[1].split("\nWORKDIR", 1)[0].replace("\\\n", "")
+        with tempfile.TemporaryDirectory(prefix="apt-failure-") as temporary:
+            root = Path(temporary)
+            stub = root / "stub"
+            stub.write_text(f"#!{sys.executable}\n" + textwrap.dedent('''\
+                import json, os, pathlib, sys
+                name = pathlib.Path(sys.argv[0]).name
+                with open(os.environ['CALLS'], 'a') as log:
+                    log.write(json.dumps([name, *sys.argv[1:]]) + '\\n')
+                if name == 'apt-get' and os.environ['FAIL_AT'] in sys.argv[1:]:
+                    sys.exit(100)
+                '''))
+            stub.chmod(0o755)
+            for name in ("apt-get", "rm", "groupadd", "useradd", "install"):
+                (root / name).symlink_to(stub)
+            for fail_at, count in (("update", 1), ("upgrade", 2), ("install", 3), ("none", 3)):
+                with self.subTest(fail_at=fail_at):
+                    log = root / f"calls-{fail_at}"
+                    environment = {**os.environ, "PATH": str(root), "CALLS": str(log), "FAIL_AT": fail_at}
+                    result = subprocess.run([shutil.which("sh"), "-c", command], env=environment,
+                                            text=True, capture_output=True, timeout=10)
+                    self.assertEqual(result.returncode, 0 if fail_at == "none" else 100)
+                    calls = [json.loads(line) for line in log.read_text().splitlines()]
+                    apt = [call for call in calls if call[0] == "apt-get"]
+                    self.assertEqual(len(apt), count)
+                    for call in apt:
+                        self.assertIn("Acquire::Retries=3", call)
+                    self.assertIn("APT::Update::Error-Mode=any", apt[0])
+                    if fail_at != "none":
+                        self.assertEqual(len(calls), count, "Failed APT must stop cleanup and user creation")
+                    else:
+                        self.assertEqual([call[0] for call in calls[3:]], ["rm", "groupadd", "useradd", "install"])
+
     def test_complete_customized_project_and_no_source_layout_dependencies(self):
         with tempfile.TemporaryDirectory() as temporary:
             for name in ("garden-notes", "kitternel-light", "root", "a-very-long-application-name", *FORMAT_NAMES):
@@ -78,6 +171,12 @@ class GenerationTests(unittest.TestCase):
                                     if not link.startswith(("https://", "http://", "mailto:", "#")):
                                         target = link.split("#", 1)[0]
                                         self.assertTrue((path.parent / target).exists(), f"Broken generated link: {link}")
+                                        if "#" in link:
+                                            document = (path.parent / target) if target else path
+                                            text_without_code = re.sub(r"```.*?```", "", document.read_text(), flags=re.S)
+                                            headings = re.findall(r"^#{1,6} (.+)$", text_without_code, re.M)
+                                            anchors = {re.sub(r"[^\w -]", "", h.lower()).replace(" ", "-") for h in headings}
+                                            self.assertIn(link.split("#", 1)[1], anchors, f"Broken generated anchor: {link}")
                             if name != "kitternel-light" and path.name != "LICENSE":
                                 self.assertNotIn("kitternel", text.lower(), path)
                     self.assertFalse((destination / ".git").exists())
@@ -145,6 +244,29 @@ class GenerationTests(unittest.TestCase):
             workflow = (project / ".github/workflows/ci.yml").read_text()
             self.assertIn("python3 scripts/check-toolchain-pins.py", workflow)
             self.assertIn("working-directory: .", workflow)
+
+    def test_onboarding_paths_scripts_and_identity(self):
+        with tempfile.TemporaryDirectory(prefix="onboarding-docs-") as temporary:
+            project = creator.generate("dev-notes", Path(temporary) / "application")
+            scripts = json.loads((project / "frontend/package.json").read_text())["scripts"]
+            for filename in ("README.md", "CONTRIBUTING.md", "MAINTENANCE.md", "AGENTS.md", "SECURITY.md"):
+                text = (project / filename).read_text()
+                for placeholder in ("@NAME@", "@DISPLAY@"):
+                    self.assertNotIn(placeholder, text, filename)
+                for command in re.findall(r"npm run ([a-zA-Z0-9:_-]+)", text):
+                    self.assertIn(command, scripts, (filename, command))
+                for path in re.findall(r"(?:python3|sh) ((?:\.\./)?scripts/[a-zA-Z0-9_.-]+)", text):
+                    local = path.removeprefix("../")
+                    self.assertTrue((project / local).is_file(), (filename, path))
+                for path in re.findall(r"`((?:backend|frontend)/(?:src|tests|migrations|build\.rs)[a-zA-Z0-9_./-]*)`", text):
+                    self.assertTrue((project / path).exists(), (filename, path))
+            readme = (project / "README.md").read_text()
+            contributing = (project / "CONTRIBUTING.md").read_text()
+            self.assertIn("# Dev Notes", readme)
+            self.assertIn('git commit -m "Initial application"', contributing)
+            self.assertTrue((project / "backend/migrations/0001_greeting.sql").is_file())
+            self.assertFalse((project / ".git").exists())
+            self.assertIn("No upstream starter remote", contributing)
 
     def test_invalid_names_do_not_create_destinations(self):
         with tempfile.TemporaryDirectory() as temporary:
