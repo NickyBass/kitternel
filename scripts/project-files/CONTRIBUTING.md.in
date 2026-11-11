@@ -250,6 +250,14 @@ from the maintenance runbook. Inspect logs/config locally; do not publish secret
 private environment values or database exports. Stop if storage identity or schema
 compatibility is uncertain.
 
+CI configures APT download retries and rejects incomplete index updates on its
+disposable runner. Browser installation has at most three attempts, separated by
+10 seconds, within the existing job deadline; a persistent failure still fails CI.
+The Docker build also retries APT downloads and stops at a failed index update.
+When packages appear missing, inspect earlier `apt-get update` errors for DNS,
+network or repository failures before changing dependencies. Retry limits do not
+repair a persistent outage or justify skipping browser/storage checks.
+
 | Symptom | Likely cause and safe inspection | Next step |
 | --- | --- | --- |
 | Wrong Rust compiler | From backend: `rustup show active-toolchain`; check `rust-toolchain.toml` and `rustc --version` | Install/select that toolchain through rustup; [maintenance](MAINTENANCE.md#rust-toolchain-and-libraries), not a blind pin edit |

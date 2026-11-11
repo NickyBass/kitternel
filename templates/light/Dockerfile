@@ -16,9 +16,9 @@ RUN --mount=type=secret,id=proxy_ca \
     CARGO_PROFILE_RELEASE_STRIP=symbols cargo +1.99.1 build --release --locked --jobs 4
 
 FROM ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c AS runtime
-RUN apt-get update \
-    && apt-get upgrade -y --no-install-recommends \
-    && apt-get install -y --no-install-recommends ca-certificates curl sqlite3 \
+RUN apt-get -o Acquire::Retries=3 -o APT::Update::Error-Mode=any update \
+    && apt-get -o Acquire::Retries=3 upgrade -y --no-install-recommends \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends ca-certificates curl sqlite3 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 kitternel \
     && useradd --uid 10001 --gid kitternel --no-create-home --shell /usr/sbin/nologin kitternel \
