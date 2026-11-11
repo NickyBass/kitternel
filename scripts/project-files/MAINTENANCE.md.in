@@ -213,7 +213,7 @@ one SQLite instance and serialized replacement, health checks and graceful shutd
 The current Compose grace period is 15 seconds; shutdown timeout defaults to 10.
 Do not assume unhealthy status triggers automatic restart. Base/package changes must
 retain helper compatibility, ownership, certificates and the ability to back up and
-restore. Consult [README recovery instructions](README.md#consistent-backup-and-restore).
+restore. Consult [release/recovery runbook](#releases-updates-and-recovery).
 
 ### GNU recovery decision and residual uutils risk
 
@@ -305,17 +305,314 @@ validation and disposable-volume recovery checks. No test should use deployment 
 - Confirm all commands/scripts/docs belong to this application and CI has no required
   reference to the original starter. Record actual remote CI outcomes separately.
 
-## Release and rollback overview
+## Releases, Updates and Recovery
 
-Retain the previously deployed application image identity and a verified database
-backup before replacement. A mutable local tag alone is not a rollback archive.
-Keep the Compose project/volume identity stable and never remove production volumes
-as an ordinary update step. Application rollback changes the executable; database
-recovery restores data and can discard writes since the snapshot. SQLx startup
-migrations are not automatically reversed. A schema change may prevent the older
-application from starting; do not edit migration history to simulate a downgrade.
+Use this manual runbook from the application's root on a single Docker host, in a
+dedicated POSIX shell, with Docker/Compose v2, Git, curl and the tools in the scan
+guide. Start from your own committed application repository. Commands below target
+the generated single-instance Compose configuration and named SQLite volume. If
+production uses extra Compose files, a bind mount, different database/port settings
+or another project identity, preserve those settings and review the effective
+configuration before adapting this example. Do not silently substitute a new volume.
 
-See [README](README.md) for the existing operational boundaries and backup procedure.
-This overview does not supply an automatic release controller, volume cutover or
-complete release/recovery runbook. Plan and verify those operator decisions before
-production use; never infer schema compatibility from a healthy new container.
+### 1. Identify and retain the running release
+
+`:local` is a mutable development tag. A unique release tag is a convention, not an
+immutability guarantee. Docker's local image ID (`sha256:...`) identifies local
+image content; a registry `repository@sha256:...` manifest digest is a different
+identity used for distribution. No registry is required here. Record the running
+container's `.Image`, not just the tag in Compose or the current Git checkout.
+
+Set `PROJECT` to the **existing** Compose project identity (the generated name below
+is the default, not permission to rename a deployment). Use your deployment records
+and `docker compose ls` to confirm it. Keep HOST_PORT and all production overrides
+unchanged. The preflight requires a clean Git working tree so the recorded revision identifies
+the built source; commit reviewed non-secret configuration changes in your own
+repository before a release. This example requires one running `app` container. If absent, inspect
+the stopped container and deployment records instead of continuing these commands.
+
+```sh
+set -eu
+umask 077
+test -z "$(git status --porcelain)"
+PROJECT=@NAME@
+REVISION=$(git rev-parse HEAD)
+RELEASE="${REVISION}-r1"
+RECORD_DIR="../@NAME@-release-records/$RELEASE"
+test ! -e "$RECORD_DIR"
+mkdir -p "$RECORD_DIR"
+CURRENT=$(docker compose -p "$PROJECT" -f compose.yaml ps -q app)
+test -n "$CURRENT"
+PREVIOUS_ID=$(docker inspect --format '{{.Image}}' "$CURRENT")
+DATA_VOLUME=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$CURRENT")
+test -n "$DATA_VOLUME"
+docker volume inspect "$DATA_VOLUME" --format '{{.Name}}'
+PREVIOUS_TAG="@NAME@:retained-$RELEASE"
+if docker image inspect "$PREVIOUS_TAG" >/dev/null 2>&1; then
+    echo 'Retained tag already exists; choose a new release identifier.' >&2
+    exit 1
+fi
+docker image tag "$PREVIOUS_ID" "$PREVIOUS_TAG"
+printf '%s\n' "source=$REVISION" "previous=$PREVIOUS_ID" "previous_container=$CURRENT" "retained=$PREVIOUS_TAG" "project=$PROJECT" "volume=$DATA_VOLUME" > "$RECORD_DIR/identity.txt"
+```
+
+Use an unused release suffix instead of `r1` for another build of the same commit;
+do not overwrite retained tags or records. Retain previous image content locally
+and in your chosen protected image archive/registry before pruning hosts. A local
+tag is not protection against host loss or aggressive image pruning. Image identity
+alone does not recover the database. The example records directory is outside the build context; choose another
+protected writable location outside it if needed. Keep operational records out of build
+contexts and public commits if they contain sensitive operational details.
+
+### 2. Prepare and verify the candidate
+
+Review source/manifest/lockfile changes and release notes. Run the Rust and frontend
+checks in this guide/README and the dependency scans in SECURITY-SCANNING.md; stop
+on failures. Review pending migration files against the running `_sqlx_migrations`
+versions/checksums. Record whether an old binary can read **and start with** the
+post-update database. When in doubt, test compatibility on an independent restored
+copy before touching deployment data. Never test candidate migrations on production
+merely to discover whether rollback works.
+
+Known pre-alpha formatting limitation: some valid generated names, including
+`maintenance-notes`, currently make a personalized SQLite-path line in config.rs
+require rustfmt wrapping. Resolve that in a separate reviewed correction before
+releasing; do not disable formatting or claim it passed. This runbook does not fix
+that source-generation defect.
+
+The following build uses normal caching. For OS package refreshes use the clean
+build described earlier. In a managed TLS proxy supply the existing optional public
+`proxy_ca` BuildKit secret; never disable TLS verification.
+
+```sh
+CANDIDATE_TAG="@NAME@:release-$RELEASE"
+if docker image inspect "$CANDIDATE_TAG" >/dev/null 2>&1; then
+    echo 'Candidate tag already exists; choose a new release identifier.' >&2
+    exit 1
+fi
+docker build --label "org.opencontainers.image.revision=$REVISION" -t "$CANDIDATE_TAG" .
+CANDIDATE_ID=$(docker image inspect --format '{{.Id}}' "$CANDIDATE_TAG")
+printf '%s\n' "candidate=$CANDIDATE_ID" "tag=$CANDIDATE_TAG" >> "$RECORD_DIR/identity.txt"
+python3 scripts/docker-smoke.py --image "$CANDIDATE_ID" -v
+python3 scripts/sqlite-backup-smoke.py --image "$CANDIDATE_ID" -v
+python3 scripts/security-scan.py image --project . --image "$CANDIDATE_ID"
+```
+
+Those runners use their own disposable volumes, not deployment storage. A completed
+image build is not a substitute for tests/scans. Backups, compatibility assessment,
+known-image retention and data checks are essential safeguards. Browser/load tests
+and wider platform coverage add assurance according to the change; they do not
+replace data protection. Record every skipped check and its reason, rather than
+calling an unchecked candidate production-ready.
+
+For explicit local image selection, create the following operator-owned override
+**once**, only if it does not already exist. On later releases inspect and reuse it;
+never overwrite an existing override that contains other deployment settings.
+`RELEASE_IMAGE` below is a Compose interpolation variable introduced by this file,
+not an environment setting understood by the Rust application.
+
+```sh
+export RELEASE_IMAGE="$CANDIDATE_ID"
+test ! -e release.compose.yaml
+cat > release.compose.yaml <<'YAML'
+services:
+  app:
+    image: "${RELEASE_IMAGE:?Set RELEASE_IMAGE to a verified local image ID}"
+YAML
+dc() { docker compose -p "$PROJECT" -f compose.yaml -f release.compose.yaml "$@"; }
+dc config --quiet
+```
+
+The function exists only in this shell; later sessions must reconstruct/export the
+recorded image ID and define it again. Always include this override when managing
+the deployment; unqualified Compose would select `:local` again. Inspect the resolved
+mounts/ports privately before deployment (full config may contain secrets). The
+image is already local; deployment below forbids implicit builds or pulls.
+
+### 3. Create and retain a consistent SQLite backup
+
+The current API is read-only, but operators or a customized app may still write.
+Quiesce **all** writers before the final pre-deployment snapshot, and keep them
+quiesced through verification/cutover. For a writable application that cannot freeze
+writes independently, stop it before running the backup helper. Otherwise a live
+snapshot is consistent only at its snapshot point: later writes can be lost in
+recovery. Do not promise a lossless rollback when writers cannot be controlled.
+
+The helper supports online backup while readers/the app remain running. It uses
+SQLite's backup API, finalizes WAL-independent output, checks integrity/FKs and
+atomically refuses overwrite. Copying only an active `.db` can omit committed WAL
+data. Do not manipulate live database/sidecar files manually.
+
+```sh
+BACKUP_VOLUME="${PROJECT}-backup-$RELEASE"
+SNAPSHOT="pre-$RELEASE.sqlite"
+if docker volume inspect "$BACKUP_VOLUME" >/dev/null 2>&1; then
+    echo 'Backup volume already exists; inspect it and choose an unused name.' >&2
+    exit 1
+fi
+docker volume create "$BACKUP_VOLUME"
+docker run --rm --read-only --no-healthcheck --network none --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:size=32m,mode=1777 --mount "source=$DATA_VOLUME,target=/data" --mount "source=$BACKUP_VOLUME,target=/backups" --entrypoint /app/sqlite-backup "$PREVIOUS_ID" "$SNAPSHOT"
+docker run --rm --read-only --network none --mount "source=$BACKUP_VOLUME,target=/backups,readonly" --entrypoint sqlite3 "$PREVIOUS_ID" -readonly "/backups/$SNAPSHOT" 'PRAGMA integrity_check; PRAGMA foreign_key_check; SELECT version,success,hex(checksum) FROM _sqlx_migrations ORDER BY version;' > "$RECORD_DIR/snapshot-checks.txt"
+printf '%s\n' "backup_volume=$BACKUP_VOLUME" "snapshot=$SNAPSHOT" "snapshot_image=$PREVIOUS_ID" >> "$RECORD_DIR/identity.txt"
+```
+
+Inspect snapshot-checks.txt: integrity must be `ok`, foreign-key checking must have
+no violation rows, and migration versions/success/checksums must match the expected
+source history. Verify representative application data too; `ok` alone does not
+prove the file contains the data you intended to preserve. Snapshot names must use
+only the helper's permitted alphanumeric/dot/underscore/hyphen syntax.
+
+Optionally export the **finalized snapshot**, not the live database. This helper
+container never starts; remove only its recorded name afterwards. On an export
+failure preserve the snapshot/volume and inspect before retrying.
+
+```sh
+EXPORT_CONTAINER="${PROJECT}-export-$RELEASE"
+docker create --name "$EXPORT_CONTAINER" --read-only --network none --mount "source=$BACKUP_VOLUME,target=/backups,readonly" --entrypoint /bin/true "$PREVIOUS_ID"
+docker cp "$EXPORT_CONTAINER:/backups/$SNAPSHOT" "$RECORD_DIR/$SNAPSHOT"
+docker rm "$EXPORT_CONTAINER"
+```
+
+Protect exports and records with restrictive access; retain encrypted off-host
+copies through your own backup system. A second local volume is independent of the
+container but not of host loss. Do not commit database exports. A successful backup
+command is **not** proof of recoverability: complete the next section first.
+
+### 4. Prove recovery in an independent volume
+
+For an incident in a new session, reconstruct PROJECT, backup volume, snapshot and
+matching image from protected records. Do not infer the right version from a broken
+current container. Choose unused restore/container names; never reuse an occupied
+restore target. The recorded pre-update image is appropriate for its pre-update
+snapshot; a newer image may apply additional migrations during validation.
+
+```sh
+RESTORE_VOLUME="${PROJECT}-restore-$RELEASE"
+VALIDATION_CONTAINER="${PROJECT}-restore-check-$RELEASE"
+RECOVERY_IMAGE="$PREVIOUS_ID"
+if docker volume inspect "$RESTORE_VOLUME" >/dev/null 2>&1; then
+    echo 'Restore volume already exists; use a fresh target.' >&2
+    exit 1
+fi
+docker volume create "$RESTORE_VOLUME"
+docker run --rm --read-only --no-healthcheck --network none --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:size=32m,mode=1777 --mount "source=$RESTORE_VOLUME,target=/data" --mount "source=$BACKUP_VOLUME,target=/backups,readonly" --entrypoint /app/sqlite-restore "$RECOVERY_IMAGE" "$SNAPSHOT"
+docker run --rm --read-only --network none --mount "source=$RESTORE_VOLUME,target=/data,readonly" --entrypoint sqlite3 "$RECOVERY_IMAGE" -readonly /data/@NAME@.db 'PRAGMA integrity_check; PRAGMA foreign_key_check; SELECT version,success,hex(checksum) FROM _sqlx_migrations ORDER BY version;' > "$RECORD_DIR/restored-checks.txt"
+diff "$RECORD_DIR/snapshot-checks.txt" "$RECORD_DIR/restored-checks.txt"
+docker run -d --name "$VALIDATION_CONTAINER" --read-only --network none --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:size=32m,mode=1777 --mount "source=$RESTORE_VOLUME,target=/data" "$RECOVERY_IMAGE"
+docker exec "$VALIDATION_CONTAINER" curl --retry 30 --retry-delay 1 --retry-connrefused --fail --max-time 2 --silent --show-error http://127.0.0.1:8080/health/ready
+docker exec "$VALIDATION_CONTAINER" curl --fail --silent --show-error http://127.0.0.1:8080/api/hello
+docker stop -t 15 "$VALIDATION_CONTAINER"
+docker inspect --format '{{.State.ExitCode}}' "$VALIDATION_CONTAINER"
+docker rm "$VALIDATION_CONTAINER"
+```
+
+Require readiness, expected actual application data and clean exit code `0`. The
+initial file inspection precedes application startup, while the restored file is
+finalized without WAL sidecars. Once the app enables WAL, inspect through the app
+or a normal writable data mount: a wholly read-only WAL directory without SHM can
+fail to open even for a read-only SQL query. Do not change permissions or manipulate
+sidecars to bypass that restriction. The
+validation app has no published ports and mounts **only the restored data volume**;
+it cannot open production storage. Preserve the original volume and the snapshot.
+Helpers reject existing targets, unsafe symlinks and sidecars; do not bypass these
+guards. Treat snapshots as trusted operator input, not arbitrary uploaded databases.
+
+For eventual data cutover, stop the production and validation apps first. An
+operator must review a persistent Compose volume mapping to the **verified restored
+volume**, export the compatible image selection, validate the complete configuration
+and verify service/data again. With the unchanged generated layout, review the
+`volumes.light-data` definition: an external-volume declaration (`external: true`)
+with `name` equal to the exact verified existing restore volume can retain the
+service's `/data` mount without renaming PROJECT. Confirm the resolved mount before
+starting; do not guess a new volume name or silently create empty storage.
+This guide does not automatically switch volumes or
+provide a universal cutover command for customized deployments. Preserve the
+original volume until recovery is confirmed; do not run simultaneous instances
+against it. Restoring a snapshot may discard later writes: decide whether they
+must be reconciled before resuming service. Service availability is not the same
+as recovery of the newest data.
+
+### 5. Replace the application without replacing its data
+
+Only after checks, compatible migration review, retained image and proven backup:
+
+```sh
+dc stop --timeout 15 app
+dc up -d --no-build --pull never --wait --wait-timeout 60 app
+CURRENT=$(dc ps -q app)
+test "$(docker inspect --format '{{.Image}}' "$CURRENT")" = "$CANDIDATE_ID"
+ACTUAL_VOLUME=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$CURRENT")
+test "$ACTUAL_VOLUME" = "$DATA_VOLUME"
+curl --fail "http://127.0.0.1:${HOST_PORT:-8080}/health/ready"
+curl --fail "http://127.0.0.1:${HOST_PORT:-8080}/api/hello"
+docker exec "$CURRENT" sqlite3 -readonly /data/@NAME@.db 'SELECT version,success,hex(checksum) FROM _sqlx_migrations ORDER BY version;' > "$RECORD_DIR/deployed-migrations.txt"
+printf '%s\n' "deployed=$CANDIDATE_ID" "container=$CURRENT" "data_volume=$ACTUAL_VOLUME" >> "$RECORD_DIR/identity.txt"
+```
+
+Compare expected data and migrations, not just HTTP 200. Record verification/time
+and only then release your write freeze. This causes interruption; the existing
+15-second container grace period exceeds the default ten-second app drain budget.
+Startup migrations execute before traffic is served. A failed startup may still
+have changed the database: preserve it and assess before retrying or reverting.
+
+Never use `docker compose down -v`, volume removal, or global prune as an ordinary
+upgrade/recovery step. Keep PROJECT and the actual data volume identity stable.
+Do not assume changing the directory or project name finds the same database.
+
+### 6. Application rollback: three compatibility cases
+
+1. **No schema changes:** verify migration metadata and data semantics remain
+   compatible. Exercise old/new versions on a disposable copy. Changed data formats
+   can break rollback even without new SQL migrations.
+2. **Backward-compatible migration:** additive SQL is not enough evidence. The old
+   binary may reject migration versions absent from its embedded SQLx history.
+   Verify startup, reads/writes and migration handling with the **actual old image**
+   on an independent migrated copy. Never delete records or disable validation to
+   simulate compatibility.
+3. **Breaking/incompatible migration:** image-only rollback may fail or corrupt
+   assumptions. Stop and plan coordinated application/data recovery, or a reviewed
+   forward repair. Preserve the migrated original and all available writes. SQLx
+   does not automatically reverse migrations; never edit deployed migration files.
+
+Only if database compatibility with the retained image has been established:
+
+```sh
+docker image inspect "$PREVIOUS_ID" --format '{{.Id}}'
+export RELEASE_IMAGE="$PREVIOUS_ID"
+dc config --quiet
+dc stop --timeout 15 app
+dc up -d --no-build --pull never --wait --wait-timeout 60 app
+CURRENT=$(dc ps -q app)
+test "$(docker inspect --format '{{.Image}}' "$CURRENT")" = "$PREVIOUS_ID"
+test "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$CURRENT")" = "$DATA_VOLUME"
+curl --fail "http://127.0.0.1:${HOST_PORT:-8080}/health/ready"
+curl --fail "http://127.0.0.1:${HOST_PORT:-8080}/api/hello"
+printf '%s\n' "rolled_back_to=$PREVIOUS_ID" >> "$RECORD_DIR/identity.txt"
+```
+
+Image rollback retains the current database; it does not restore snapshot data.
+Record the result and any ongoing incident. Do not repeat deployment blindly if
+health/data checks fail. If the old image is missing, stop and recover the exact
+trusted artifact from your archive/registry or prepare a separately verified build;
+a rebuild of old source against live package repositories need not be identical.
+
+### 7. Failure decisions
+
+| Failure | Check/preserve | Safe next decision |
+| --- | --- | --- |
+| Candidate build fails | Build phase, lockfiles, tool pins, CA/registry access, free disk; keep current image/data | Fix candidate in isolation; do not replace the running service |
+| Startup fails | Locally inspect `docker compose` status/logs using the same project/files; retain failed container metadata and database | Assess configuration, permissions and migrations before retry/rollback |
+| Health fails | Process state, readiness DB query, storage, migration status; preserve data | Stop replacement attempts; health failure alone does not prove image rollback safe |
+| Migration fails | Existing versions/checksums, SQLx diagnostics, free space; retain original/history | Never delete migration records/files or reset the volume; determine forward repair versus compatible restore |
+| Expected data is absent | Actual /data mount, project name, image and DB path | Stop writers; do not seed/reset or create another guessed volume |
+| Previous image missing | Recorded ID, retained tag and trusted archive | No guaranteed rollback; verify a recovered/rebuilt artifact independently |
+| Backup invalid | Artifact identity, integrity/FK/data/history checks; preserve other backups and original DB | Do not deploy relying on it; obtain a valid backup or stop for recovery planning |
+| Restore fails | UID/GID, empty target, canonical paths, sidecars, local hard-link support and matching image | Keep original/snapshot untouched; diagnose and use another fresh restore target |
+| Volume identity changed | Effective Compose project/files/mount; preserve both old and unexpected volumes | Stop writes and reconcile identity before any container replacement |
+| Old image rejects migrated DB | Actual embedded migrations and data compatibility | Image-only rollback is insufficient; plan coordinated recovery/forward repair |
+
+Read logs privately using the same Compose files/project (for example `dc logs
+--tail 100 app` once the function/image environment is reconstructed). Never publish
+raw config, secrets, database exports or arbitrary logs as troubleshooting artifacts.
+A backup restore test, a health check and a passing scanner each provide different,
+limited evidence; none guarantees production readiness or lossless disaster recovery.

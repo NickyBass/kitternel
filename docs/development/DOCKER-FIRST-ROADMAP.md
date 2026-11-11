@@ -151,3 +151,65 @@ name `maintenance-notes` because its default SQLite-path line needs wrapping in
 import-group fix did not cover this length-dependent case. No application source
 was changed here; that defect needs a separate focused correction. Documentation
 and compiler/security procedures do not imply that this formatting failure passed.
+
+## Step 7B.3: Safe application releases and recovery
+
+Branch: `docs/generated-release-recovery`. The generated maintenance guide now
+contains the manual "Releases, Updates and Recovery" runbook. README links to it
+instead of duplicating backup commands. Tests check local section anchors, helper
+paths, image-only Compose selection and the absence of destructive volume-removal
+commands in executable examples. No runtime/configuration/dependency policy changed.
+
+The runbook records clean source revisions, retains previous local image IDs/tags,
+validates a candidate by image ID, selects it through an explicit operator-owned
+Compose override, keeps project/volume identity stable, freezes writers, proves a
+snapshot restore, and replaces containers serially. It distinguishes image rollback
+from snapshot recovery and potential loss of subsequent writes. Additive SQL does
+not prove old-binary compatibility: SQLx may reject migration versions absent from
+that binary. A production volume cutover remains an explicit reviewed operator
+mapping, not an automatic switch.
+
+### Executed verification (2026-11-11, Linux/amd64)
+
+- `python3 scripts/test-create-light.py --rustfmt -v`: nine tests passed, including
+  the existing five-name formatting matrix. Python/Git-only mode passed with the
+  optional formatting test skipped. Nine standalone orchestration tests passed.
+  Python syntax and `git diff --check` passed.
+- Generated `rel-231c5a` outside the checkout; baseline command:
+  `docker build --secret id=proxy_ca,src="$CODEX_PROXY_CERT" -t rel-231c5a:local .`
+  from that application's root. Build succeeded; caching was retained, not disabled.
+- A disposable validation harness executed the generated runbook's shell blocks
+  for sections 1–6, adding the documented optional public CA secret to candidate
+  build and using a unique HOST_PORT. Both baseline/candidate used the generated
+  Dockerfile/context; the candidate differed by revision label only, not new schema
+  or application features. A temporary application Git repository supplied its own
+  committed revision. No original application binaries/assets/data were copied.
+- Candidate ID passed `scripts/docker-smoke.py --image "$CANDIDATE_ID" -v` (5 tests),
+  `scripts/sqlite-backup-smoke.py --image "$CANDIDATE_ID" -v` (8 tests), and its own
+  image scan. Copied RustSec/npm wrappers passed independently with zero findings.
+  Trivy: 46 occurrences/36 CVEs, 42 MEDIUM, 4 LOW, no HIGH/CRITICAL/UNKNOWN.
+- Actual Compose image-ID deployment, different container identity, unchanged data
+  volume, health/data/migration checks, schema-compatible image rollback, finalized
+  snapshot export, independent restore and restored application reads all passed.
+  Original data retained a deliberately later value; restored data retained the
+  earlier snapshot value. Cleanup and a separate inventory found no owned containers,
+  volumes, networks or image tags left behind.
+- Clean/dirty Git preflight and private record-directory permissions were checked.
+  The manual external-volume override syntax was checked with Compose config only;
+  no production data-volume cutover is claimed. Docker 29.9.2/Compose 2.40.3 were used.
+
+The first rehearsal stopped at an additional harness inspection: after the restored
+app had enabled WAL and stopped, a fully read-only volume mount could not create
+required SQLite shared-memory files (SQLITE_CANTOPEN). Backup/restore and the restored
+app had already worked; deployment/rollback were not reached in that attempt. Scoped
+cleanup passed. The harness's later read-only SQL checks now use a normal writable
+data-volume mount while keeping the root filesystem read-only. A fresh generated
+fixture and the complete rehearsal then passed. The guide explains this distinction.
+
+The known `maintenance-notes` wrapping defect was reproduced separately: rustfmt
+exits 1 in config.rs. It remains an outstanding pre-alpha issue, not a regression
+from this documentation change. The short rehearsal name passes formatting. No
+format gate was weakened. Native/frontend unit or browser suites were not rerun;
+Docker builds compiled Rust and typechecked/built the frontend. No incompatible or
+breaking migration rollback, real production cutover, off-host recovery, remote CI,
+Windows/ARM or zero-loss disaster-recovery guarantee is claimed. No Step 7B.4 work.

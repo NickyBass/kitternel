@@ -21,7 +21,10 @@ Open http://localhost:8080. The Compose project is `@NAME@`; keep that identity 
 
 `docker compose stop` stops the app. `docker compose down` retains data; **do not use `down --volumes` on deployment storage**. Readiness checks SQLite; liveness only checks HTTP. A health status does not itself restart an unhealthy container. SIGTERM drains requests for ten seconds by default; keep the container grace period longer. HTTPS requires a separately configured trusted reverse proxy; forwarded headers confer no application trust.
 
-For upgrades, review migrations, create and verify a backup, rebuild the image, then use `docker compose up -d --no-build --wait`. Expect interruption. Migrations run before serving traffic. An older image does not undo schema changes; rollback requires schema compatibility.
+For updates, image retention, rollback and SQLite recovery, follow
+[Releases, Updates and Recovery](MAINTENANCE.md#releases-updates-and-recovery).
+That runbook selects explicit local images without changing the persistent volume.
+Migrations are not automatically reversed; expect interruption and verify compatibility.
 
 ## Development and verification
 
@@ -69,26 +72,12 @@ These scripts use disposable resources, never your deployment volume. The includ
 
 ## Consistent backup and restore
 
-Use `/app/sqlite-backup` and `/app/sqlite-restore` from the matching image. Never copy only the live `.db` file. The helper uses SQLite's online backup API, checks integrity/foreign keys, and publishes a standalone file without overwriting. Snapshot names start with an alphanumeric character and contain only letters, digits, dots, underscores, and hyphens.
-
-Identify the actual data volume first:
-
-```sh
-docker inspect "$(docker compose ps -q app)" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}'
-```
-
-Record that name and the image/migration revision. Substitute it for `ACTUAL_DATA_VOLUME` below; do not infer a production volume name:
-
-```sh
-docker volume create @NAME@-backups
-docker run --rm --read-only --no-healthcheck --network none --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:size=32m,mode=1777 --mount source=ACTUAL_DATA_VOLUME,target=/data --mount source=@NAME@-backups,target=/backups --entrypoint /app/sqlite-backup @NAME@:local snapshot.sqlite
-docker volume create @NAME@-restored
-docker run --rm --read-only --no-healthcheck --network none --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:size=32m,mode=1777 --mount source=@NAME@-restored,target=/data --mount source=@NAME@-backups,target=/backups,readonly --entrypoint /app/sqlite-restore @NAME@:local snapshot.sqlite
-```
-
-Restore only to a new empty volume; existing database/sidecars and symlinked parents are rejected. Helpers require local POSIX storage with hard links. Export only the finalized snapshot, protect it like application data, and retain encrypted off-host copies. A second volume on the same host does not protect against host loss. Scheduling, retention, encryption, and monitoring are operator responsibilities.
-
-Validate a restore with integrity/FK checks and a temporary matching application image using **only the restored volume**, then compare actual application data and migration metadata. Preserve the original volume. Before cutover stop the original and validation apps, change the persistent mount to the verified restored volume, and verify readiness/data. Never overlap instances on one database. The automated recovery drill is a repeatable local check, not an RPO/RTO or host-loss guarantee.
+Use the [SQLite backup and recovery runbook](MAINTENANCE.md#3-create-and-retain-a-consistent-sqlite-backup).
+Never copy only a live database file; use the image's existing helpers, verify the
+snapshot, and restore into an independent volume before trusting it. Keep the
+original data and protected off-host backups. A successful backup command alone
+does not establish recovery readiness. Application rollback and data recovery
+have different compatibility and write-loss implications.
 
 ## Identity and license
 
