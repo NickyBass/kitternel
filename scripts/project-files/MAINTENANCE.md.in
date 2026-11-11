@@ -424,12 +424,6 @@ post-update database. When in doubt, test compatibility on an independent restor
 copy before touching deployment data. Never test candidate migrations on production
 merely to discover whether rollback works.
 
-Known pre-alpha formatting limitation: some valid generated names, including
-`maintenance-notes`, currently make a personalized SQLite-path line in config.rs
-require rustfmt wrapping. Resolve that in a separate reviewed correction before
-releasing; do not disable formatting or claim it passed. This runbook does not fix
-that source-generation defect.
-
 The following build uses normal caching. For OS package refreshes use the clean
 build described earlier. In a managed TLS proxy supply the existing optional public
 `proxy_ca` BuildKit secret; never disable TLS verification.

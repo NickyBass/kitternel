@@ -1,5 +1,7 @@
 use std::{env, error::Error, fmt, path::PathBuf, time::Duration};
 
+const DEFAULT_SQLITE_PATH: &str = "data/kitternel.db";
+
 #[derive(Debug)]
 pub struct Config {
     pub port: u16,
@@ -63,7 +65,7 @@ impl Config {
                 ));
             }
         };
-        let sqlite_path = lookup("SQLITE_PATH")?.unwrap_or_else(|| "data/kitternel.db".into());
+        let sqlite_path = lookup("SQLITE_PATH")?.unwrap_or_else(|| DEFAULT_SQLITE_PATH.into());
         validate_sqlite_path(PathBuf::from(&sqlite_path).as_path())?;
         let header_secs = lookup("HTTP_HEADER_TIMEOUT_SECS")?
             .unwrap_or_else(|| "10".into())
@@ -157,16 +159,19 @@ mod tests {
 
     #[test]
     fn database_path_defaults_overrides_and_rejects_memory_or_empty() {
-        assert_eq!(
-            config(&[]).unwrap().sqlite_path,
-            PathBuf::from("data/kitternel.db")
-        );
-        assert_eq!(
-            config(&[("SQLITE_PATH", "/data/custom.db")])
-                .unwrap()
-                .sqlite_path,
-            PathBuf::from("/data/custom.db")
-        );
+        let expected_path = PathBuf::from("data/kitternel.db");
+        assert_eq!(config(&[]).unwrap().sqlite_path, expected_path);
+        for path in [
+            "/data/custom.db",
+            "data/custom.db",
+            "data/a path with spaces.db",
+            "data/éclair.db",
+        ] {
+            assert_eq!(
+                config(&[("SQLITE_PATH", path)]).unwrap().sqlite_path,
+                PathBuf::from(path)
+            );
+        }
         for path in [
             "",
             "  ",

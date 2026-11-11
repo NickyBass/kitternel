@@ -60,7 +60,10 @@ The default generator regressions require no Rust installation. To additionally 
 freshly generated Rust source with the backend's pinned rustfmt, run
 `python3 scripts/test-create-light.py --rustfmt -v` after installing that toolchain
 with the rustfmt component. This checks names before, between, and after dependency
-imports without compiling applications; the existing generation workflow runs it.
+imports, the maintenance-notes wrapping regression, one-character and 32-character
+names, multiple hyphens, and every supported name length without compiling
+applications. It also verifies that checking does not rewrite Rust files; the
+existing generation workflow runs it.
 Generation itself continues to require only Python and Git.
 
 Step 3 verifies extraction, names, safety, file completeness, and selected native/frontend checks in a temporary generated project. For repeatable clean generated-image builds and Docker/Compose persistence, health, shutdown, and recovery verification, use the [independent Docker validation command](STANDALONE-DOCKER-VALIDATION.md). Commands shown above are instructions, not evidence that those deployment checks have already passed.
