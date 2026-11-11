@@ -8,10 +8,24 @@ No original starter checkout or upstream synchronization is required.
 
 One backend crate in backend, one React/TypeScript frontend in frontend, and a single production Rust process. Standard Docker and Compose are the deployment targets. Keep dependencies minimal; no speculative infrastructure, microservices, Redis, Kubernetes, or external database. Add feature modules when needed, not generic abstractions in advance.
 
+## Module map
+
+- `backend/src/main.rs`, `lib.rs`: startup, app composition and AppState.
+- `backend/src/routes/mod.rs`, `hello.rs`, `health.rs`: registered API/health handlers.
+- `backend/src/config.rs`, `db.rs`, `error.rs`, `server.rs`, `static_files.rs`: environment, SQLite, safe errors, HTTP lifecycle and assets.
+- `backend/tests/`: database/routes/server/static integration tests; `backend/migrations/`: immutable SQL; `backend/build.rs`: migration rebuild tracking.
+- `frontend/src/main.tsx`, `App.tsx`, `api.ts`, `styles.css`: React bootstrap, current component, API validation and styling. Tests are colocated in `frontend/src/App.test.tsx`; no components/pages directory exists yet.
+- Root `Dockerfile`/`compose.yaml`: single-process image and persistent local volume.
+- `scripts/`: offline pin checks, security scans and native/browser/Docker/recovery tests; `.github/workflows/`: CI.
+- [CONTRIBUTING.md](CONTRIBUTING.md): first-day changes, verification and troubleshooting; [MAINTENANCE.md](MAINTENANCE.md): updates/releases/recovery; [SECURITY.md](SECURITY.md): private reporting.
+
+Use this map for the current application, not a rule that prevents its owner from evolving it.
+
 Keep API routes under /api and liveness/readiness separate. SPA fallback must not swallow API/health errors or missing assets. Use bound SQL parameters, explicit errors, safe JSON responses, and sanitized structured logs. Never log credentials, SQL contents, personal data, or arbitrary database errors. Never trust forwarded headers without explicit trusted-proxy design. No permissive CORS. Authentication and sessions are absent: before adding protected features design authorization, secure cookies, CSRF, and rotation together.
 
 SQLite uses WAL, foreign keys on every connection, FULL synchronization, bounded timeouts, and a small pool. Preserve these defaults. Add new immutable versioned migrations, test fresh and existing databases, and never rewrite deployed history. Destructive migrations need separate review and verified recovery. Use only temporary databases/volumes in tests.
 
 Keep the canonical Dockerfile, non-root UID 10001, configurable PORT on 0.0.0.0, bounded graceful shutdown and HTTP limits. Persist the entire /data directory on local storage; one instance, serialized replacement. Never delete deployment storage to fix a test. Keep backup/restore helpers and refusal guards. No unverified zero-downtime or production-readiness claims.
 
-Run relevant checks from README.md: Rust format/Clippy/tests, locked frontend install/typecheck/lint/tests/build, path/cleanup regressions, native/browser smoke tests, and Docker/Compose/recovery checks when packaging or persistence changes. PR descriptions must include behavior, exact commands/results, limitations, and follow-up work. Never commit secrets, .env files, databases, generated build outputs, or private keys. Follow SECURITY.md for sensitive reports.
+Run `python3 scripts/check-toolchain-pins.py` from the application root before builds.
+Run relevant checks from CONTRIBUTING.md (README has quick starts): Rust format/Clippy/tests, locked frontend install/typecheck/lint/tests/build, path/cleanup regressions, native/browser smoke tests, and Docker/Compose/recovery checks when packaging or persistence changes. PR descriptions must include behavior, exact commands/results, limitations, and follow-up work. Never commit secrets, .env files, databases, generated build outputs, or private keys. Follow SECURITY.md for sensitive reports.

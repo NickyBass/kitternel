@@ -78,6 +78,12 @@ class GenerationTests(unittest.TestCase):
                                     if not link.startswith(("https://", "http://", "mailto:", "#")):
                                         target = link.split("#", 1)[0]
                                         self.assertTrue((path.parent / target).exists(), f"Broken generated link: {link}")
+                                        if "#" in link:
+                                            document = (path.parent / target) if target else path
+                                            text_without_code = re.sub(r"```.*?```", "", document.read_text(), flags=re.S)
+                                            headings = re.findall(r"^#{1,6} (.+)$", text_without_code, re.M)
+                                            anchors = {re.sub(r"[^\w -]", "", h.lower()).replace(" ", "-") for h in headings}
+                                            self.assertIn(link.split("#", 1)[1], anchors, f"Broken generated anchor: {link}")
                             if name != "kitternel-light" and path.name != "LICENSE":
                                 self.assertNotIn("kitternel", text.lower(), path)
                     self.assertFalse((destination / ".git").exists())
@@ -145,6 +151,29 @@ class GenerationTests(unittest.TestCase):
             workflow = (project / ".github/workflows/ci.yml").read_text()
             self.assertIn("python3 scripts/check-toolchain-pins.py", workflow)
             self.assertIn("working-directory: .", workflow)
+
+    def test_onboarding_paths_scripts_and_identity(self):
+        with tempfile.TemporaryDirectory(prefix="onboarding-docs-") as temporary:
+            project = creator.generate("dev-notes", Path(temporary) / "application")
+            scripts = json.loads((project / "frontend/package.json").read_text())["scripts"]
+            for filename in ("README.md", "CONTRIBUTING.md", "MAINTENANCE.md", "AGENTS.md", "SECURITY.md"):
+                text = (project / filename).read_text()
+                for placeholder in ("@NAME@", "@DISPLAY@"):
+                    self.assertNotIn(placeholder, text, filename)
+                for command in re.findall(r"npm run ([a-zA-Z0-9:_-]+)", text):
+                    self.assertIn(command, scripts, (filename, command))
+                for path in re.findall(r"(?:python3|sh) ((?:\.\./)?scripts/[a-zA-Z0-9_.-]+)", text):
+                    local = path.removeprefix("../")
+                    self.assertTrue((project / local).is_file(), (filename, path))
+                for path in re.findall(r"`((?:backend|frontend)/(?:src|tests|migrations|build\.rs)[a-zA-Z0-9_./-]*)`", text):
+                    self.assertTrue((project / path).exists(), (filename, path))
+            readme = (project / "README.md").read_text()
+            contributing = (project / "CONTRIBUTING.md").read_text()
+            self.assertIn("# Dev Notes", readme)
+            self.assertIn('git commit -m "Initial application"', contributing)
+            self.assertTrue((project / "backend/migrations/0001_greeting.sql").is_file())
+            self.assertFalse((project / ".git").exists())
+            self.assertIn("No upstream starter remote", contributing)
 
     def test_invalid_names_do_not_create_destinations(self):
         with tempfile.TemporaryDirectory() as temporary:

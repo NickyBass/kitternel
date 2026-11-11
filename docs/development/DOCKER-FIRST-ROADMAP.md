@@ -256,3 +256,53 @@ frontend build/unit/browser suite, native Rust compilation/test suite, or remote
 execution is claimed for this development-validation-only change. Runtime source,
 Docker images/digests, dependency locks, migrations, tool pins and vulnerability
 policies remain unchanged. Step 7B.5 is separate work.
+
+## Step 7B.5: Standalone developer workflow and onboarding
+
+Branch: `docs/generated-developer-workflow`. Generated README now gives concise
+Docker/native quick starts and a linked module map. CONTRIBUTING covers independent
+Git ownership, working directories/configuration, opt-in backend/frontend edits,
+immutable migration development, checks and safe troubleshooting. AGENTS adds the
+current module map and validation entry points while preserving the owner's freedom
+to evolve the application. Detailed updates, releases and recovery stay in the
+existing MAINTENANCE guide. No application source, migrations, dependencies, tool
+pins, generator behavior or security policy changed.
+
+Generator regressions validate generated relative links and cross-document heading
+anchors, referenced script/source paths, npm script names, identity substitution,
+absence of placeholders and inherited Git metadata. Existing safety tests remain.
+
+Executed verification on 2026-11-11:
+
+- Generator suite: 11 tests passed including optional five-name rustfmt integration;
+  Python/Git-only mode: 10 passed, one optional integration skipped. Pin checker and
+  21 regressions passed, as did 11 security-policy, 9 standalone-orchestration and
+  5 copied smoke-path regressions. Python syntax, workflow actionlint 1.7.12 and
+  diff whitespace checks passed.
+- A fresh `dev-notes` application outside the checkout had no inherited Git history
+  or remotes. Git initialization, staged review and an initial commit succeeded;
+  synthetic local env/database/build/report files were ignored and .env.example
+  remained trackable. Its copied pin checker and all 21 copied regressions passed.
+- In that independent application, locked Cargo check/Clippy/tests/build and format
+  checks passed (21 Rust tests). Locked npm install, typecheck/lint/tests/build
+  passed (5 frontend tests), using the selected tools and isolated build/cache paths.
+- Documented native startup created the default database directory, served built
+  assets and API, and passed readiness. Vite served its development entry and
+  proxied API/readiness correctly. The documented read-only Python database query
+  returned integrity `ok` and the applied migration metadata. Owned processes were
+  stopped with SIGTERM; Rust exited cleanly. Seven native smoke tests passed.
+- Only the disposable copy received the illustrative backend/frontend edits and
+  corresponding assertions. Format plus all 21 Rust tests, and frontend typecheck,
+  lint, 5 tests and production build passed afterwards. No illustrative SQL migration
+  was applied; schema-change/upgrade behavior was not rehearsed in this task.
+- Generated Compose configuration passed. An initial invalid synthetic .env fixture
+  was corrected before retrying; Compose reads that file even though Rust does not
+  load it automatically. Temporary Git/source/build/database resources were scoped
+  to this audit's disposable application; no temporary repository was pushed.
+
+Known `maintenance-notes` config.rs wrapping failure was reproduced with rustfmt
+exit 1 and deliberately left unchanged; no formatting gate was weakened. Docker
+images/runtime/recovery, browser automation, live security scans and remote CI were
+not run for this documentation change. Compose syntax and native startup do not
+prove container runtime or deployment behavior. No platform integrations or Step 8
+work are included.

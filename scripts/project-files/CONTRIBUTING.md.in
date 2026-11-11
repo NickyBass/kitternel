@@ -1,10 +1,273 @@
 # Contributing to @DISPLAY@
 
-Read AGENTS.md and use the development and verification commands in README.md. Keep changes focused and English-only. Include regression tests for changed behavior. Commit Cargo/npm lockfile changes deliberately and review dependency advisories; never disable TLS or integrity checks. Preserve the MIT notice.
+Use this guide for the first day and ordinary changes. Keep changes focused,
+English-only and tested. You own this application; there is no required connection
+to the original starter. [MAINTENANCE.md](MAINTENANCE.md) covers dependencies,
+toolchains, security tooling, releases and recovery; [SECURITY.md](SECURITY.md)
+covers private vulnerability reports. Preserve the [MIT notice](LICENSE).
 
-For toolchain, dependency and security updates, follow [MAINTENANCE.md](MAINTENANCE.md).
-Run `python3 scripts/check-toolchain-pins.py` from the project root before builds.
+## 1. Own your repository
 
-Add new versioned SQL migrations rather than editing applied ones. Test both new databases and upgrades that retain existing data. Keep destructive changes out of automatic startup; back up and review recovery separately.
+Start in the freshly generated application's root. Confirm you are in the right
+folder and it contains no inherited `.git` directory before initializing. The
+output is owned source, not a Git fork. Review `.gitignore` and inspect staged files:
 
-PR descriptions must state the concrete problem, resulting behavior, commands actually executed and their results, and remaining risks. Do not claim local checks prove remote CI or deployment success. Test only disposable resources; do not replace smoke-test volumes with deployment storage.
+```sh
+git init
+git add .
+git diff --cached --stat
+git commit -m "Initial application"
+```
+
+If Git asks for author identity, configure your own name/email using Git's normal
+settings, preferably local to this repository when appropriate; do not copy someone
+else's identity. No remote is added automatically. Choose your own host/repository
+and follow that host's connection instructions. No upstream starter remote is
+needed. GitHub is optional for local work; the supplied GitHub Actions workflows
+need equivalent configuration if moving to another CI provider.
+
+Local `.env`, databases/sidecars, `data`, `target`, `node_modules`, `dist`, browser
+reports, backups and security reports are ignored. `.env.example` is intentionally
+trackable and must contain examples only. Ignore rules are not a secret scanner:
+review `git status --short` and staged files before every commit. Never force-add
+secrets, private keys, production data or generated outputs.
+
+## 2. Run and understand the application
+
+Follow [README quick starts](README.md) for tools and first startup. Examples use a
+POSIX shell; on Windows use WSL or adapt environment-variable syntax in your shell.
+Run native Cargo commands from `backend`, npm commands from `frontend`, and Python
+project scripts/Compose from the application root unless shown otherwise.
+
+| Mode | Browser/assets | API and configuration | Database |
+| --- | --- | --- | --- |
+| Native Rust | Last `frontend/dist` build at port 8080 | `backend/src/main.rs` -> `lib.rs` -> routes; `PORT` defaults to 8080 | `backend/data/@NAME@.db` if launched from backend |
+| Vite development | React/TypeScript hot reload on 5173; no production bundle required in the browser | `frontend/vite.config.ts` proxies `/api` and `/health` to 127.0.0.1:8080, configurable with `API_PROXY_TARGET` | Same Rust backend/database, not a Vite database |
+| Docker/production | Rust serves compiled assets from `/app/public` | One process; container 8080, loopback host publication controlled by `HOST_PORT` | Named volume mounted at `/data/@NAME@.db` |
+
+Vite and native Rust listen on all interfaces by default; use a trusted development
+environment. Docker's default published address is loopback. No mode supplies
+authentication. The Rust server still needs the initial `dist` build even when
+browsing Vite. `npm run dev` updates the development browser; run `npm run build`
+again to update the assets served by native Rust or a new production image.
+
+For another native backend port, in `backend` use `PORT=8081 cargo run --locked`;
+in the frontend terminal use `API_PROXY_TARGET=http://127.0.0.1:8081 npm run dev`.
+This is different from Docker `HOST_PORT=8081`. Restart Rust after source/config
+changes. `.env.example` is not a Rust dotenv loader; Compose may separately use
+`.env` for interpolation. Defaults/validation live in
+[config.rs](backend/src/config.rs); do not diagnose by dumping all environment values.
+
+The application shares a SQLx pool through `AppState` in [lib.rs](backend/src/lib.rs).
+[db.rs](backend/src/db.rs) prepares SQLite, applies embedded migrations before
+serving, and enables WAL/FKs/FULL synchronization with bounded timeouts. Missing
+native parent directories are created when permissions allow; an unwritable parent
+is an error, not a reason to reset the database. SQLITE_PATH must be an ordinary
+file path, not `:memory:` or a `file:` URI (the Python inspection URI below is a
+separate client interface).
+
+## 3. Make a small backend change
+
+[Route registration](backend/src/routes/mod.rs) maps `GET /api/hello` to
+[hello.rs](backend/src/routes/hello.rs). That handler extracts `State<AppState>`,
+queries `state.pool` with a bound parameter, and serializes the nearby `Greeting`
+response type. Keep small request/response types beside their handler; introduce
+modules when needed, not a mandatory service/repository layer. Errors use
+[error.rs](backend/src/error.rs), with safe public responses and sanitized logs.
+
+**Illustrative opt-in edit, not present in the baseline:** to change only greeting
+presentation, replace the success arm `Ok(Ok(message)) => Ok(Json(Greeting { message })),`
+inside `hello` with:
+
+```rust
+Ok(Ok(message)) => Ok(Json(Greeting {
+    message: format!("Welcome: {message}"),
+})),
+```
+
+The route, state access and database schema stay the same. Do not edit an applied
+seed migration to achieve this presentation change. Update the HTTP expectations
+in [routes.rs](backend/tests/routes.rs): both the initial greeting and the later
+`A changed greeting` response now have the `Welcome: ` prefix. Keep raw database
+expectations unchanged. Add a regression for the behavior you choose and retain
+error/404/write-rejection tests. For broader verification, update relevant native,
+browser and Docker HTTP expectations too; search with `git grep -n 'Hello from'`
+and inspect assertions rather than blindly replacing database fixture text. Also
+review non-default changed-message HTTP assertions; do not rewrite raw SQLite checks.
+
+From `backend`, validate the focused API tests, then all Rust checks:
+
+```sh
+cargo fmt --all -- --check
+cargo test --locked --test routes
+cargo check --locked
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked
+cargo build --locked
+```
+
+Restart `cargo run --locked` to inspect your endpoint with
+`curl --fail http://127.0.0.1:8080/api/hello`. This documentation does not change the
+shipped API; choosing the example is your own application change.
+
+## 4. Make a small frontend change
+
+[index.html](frontend/index.html) is Vite's HTML entry; it loads
+[main.tsx](frontend/src/main.tsx), which mounts React's `App` and imports
+[styles.css](frontend/src/styles.css). The current component is
+[App.tsx](frontend/src/App.tsx); no `components` or `pages` directory exists yet.
+[api.ts](frontend/src/api.ts) fetches `/api/hello` and `/health/ready`, validates
+response shapes, and returns typed data. Do not duplicate fetch logic just to edit
+visible text or add a state-management library for this example.
+
+**Illustrative opt-in edit:** in App.tsx, change the heading `Your stack, connected`
+to `Your application, connected`. In [App.test.tsx](frontend/src/App.test.tsx), add
+this assertion to the existing test after rendering App:
+
+```tsx
+expect(screen.getByRole('heading', { name: 'Your application, connected' })).toBeInTheDocument()
+```
+
+Use the running Vite terminal to see the edit. Keep tests colocated with components;
+Vitest currently discovers `src/**/*.test.tsx`. From `frontend`:
+
+```sh
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+These validate types, ESLint, mocked-browser unit behavior and production assets.
+They do not substitute for real backend/browser smoke tests. API changes should be
+reflected in api.ts types/validation and relevant tests, not hidden with `any`.
+
+## 5. Add a migration safely
+
+The existing history is [0001_greeting.sql](backend/migrations/0001_greeting.sql)
+in [backend/migrations](backend/migrations). Choose a new unused numeric version
+larger than all existing ones and a descriptive underscore-separated filename.
+SQLx orders by numeric version, not file modification time. The following is an
+**illustrative new file**, not an existing migration or a required feature:
+
+```sql
+-- Example only: 0002_example.sql, if version 2 is unused.
+CREATE TABLE example_notes (
+    id INTEGER PRIMARY KEY,
+    body TEXT NOT NULL
+);
+```
+
+Do not change existing SQL/checksums or delete `_sqlx_migrations` rows. Migrations
+are embedded at compilation; [build.rs](backend/build.rs) watches the directory.
+Rebuild and restart the backend: pending migrations run before HTTP traffic, and
+SQLx records versions, success and checksums in `_sqlx_migrations`. A copied SQL
+file alone does not update an already built container. Startup does not provide
+automatic migration reversal.
+
+Before schema changes, use the [maintenance/recovery guide](MAINTENANCE.md#releases-updates-and-recovery)
+to protect and prove recovery of existing data. Test both a fresh disposable database
+and a retained disposable copy with known data. Record versions/checksums and data
+before the change; after rebuilding/restarting, verify the old checksum/data remain
+and only the intended new migration appears. Do not infer data preservation from a
+healthy endpoint alone. Update tests that intentionally assert the baseline migration
+count, while keeping integrity and existing-history preservation assertions.
+
+For the default native path, from a second terminal in `backend`, after starting
+the app, inspect a database without creating a missing one:
+
+```sh
+python3 - <<'PY'
+from pathlib import Path
+import sqlite3
+path = Path('data/@NAME@.db').resolve()
+with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as connection:
+    print(connection.execute('PRAGMA integrity_check').fetchone()[0])
+    print(connection.execute('SELECT version,success,hex(checksum) FROM _sqlx_migrations ORDER BY version').fetchall())
+PY
+```
+
+Use the actual configured path if you changed it, and inspect data locally rather
+than publishing database contents. The SQL `mode=ro` avoids accidental empty-db
+creation; the native data directory must still support SQLite WAL sidecars. For
+container snapshots/restores use the documented helpers, not live-file copying.
+
+From `backend`, `python3 ../scripts/migration-build-smoke.py` checks incremental
+embedding using its own disposable source/database and a new probe migration. It
+requires dependencies/toolchains already installed. Also run database/API tests and
+recovery checks appropriate to your schema change; that build regression is not a
+complete application-specific upgrade test.
+
+## 6. Verification and review
+
+From the application root, before builds:
+
+```sh
+python3 scripts/check-toolchain-pins.py
+python3 scripts/test-toolchain-pins.py -v
+```
+
+Use the Rust/frontend checks above and locked installs from README. Run process
+checks from `backend` after both assets and the debug binary are built:
+
+```sh
+python3 ../scripts/test-smoke-paths.py -v
+python3 ../scripts/backend-smoke.py
+```
+
+For real browser checks, from `frontend` after the backend/asset build:
+
+```sh
+npx playwright install --with-deps chromium
+python3 ../scripts/browser-smoke.py
+```
+
+`CHROMIUM_PATH` may select an installed compatible browser. Process/signal checks
+target Unix; ensure builds and runners use the same Cargo configuration/cwd when
+using `CARGO_TARGET_DIR`. A missing selected binary fails without stale fallback.
+
+For packaging/storage changes, from the project root:
+
+```sh
+docker build -t @NAME@:local .
+docker compose config --quiet
+python3 scripts/docker-smoke.py --image @NAME@:local -v
+python3 scripts/sqlite-backup-smoke.py --image @NAME@:local -v
+```
+
+Smoke resources are disposable; never substitute a deployment volume. See
+[SECURITY-SCANNING.md](SECURITY-SCANNING.md) for audits/installer/network/reporting
+limits and [MAINTENANCE.md](MAINTENANCE.md) for risk-based update verification.
+Record the actual commands, results and skipped checks in your PR. Do not treat
+local results as proof of remote CI or production deployment. Before committing,
+inspect diffs and deliberate lockfile changes; never weaken checks to hide failures.
+
+## 7. Troubleshooting
+
+Diagnostics below assume the native cwd or unchanged developer Compose file shown
+in README. For released deployments preserve the exact project/files/image selection
+from the maintenance runbook. Inspect logs/config locally; do not publish secrets,
+private environment values or database exports. Stop if storage identity or schema
+compatibility is uncertain.
+
+| Symptom | Likely cause and safe inspection | Next step |
+| --- | --- | --- |
+| Wrong Rust compiler | From backend: `rustup show active-toolchain`; check `rust-toolchain.toml` and `rustc --version` | Install/select that toolchain through rustup; [maintenance](MAINTENANCE.md#rust-toolchain-and-libraries), not a blind pin edit |
+| Cargo locked build/resolution failure | Inspect Cargo.toml/Cargo.lock diff and first compiler/resolution error; `cargo check --locked` | Coordinate intended changes through maintenance; do not delete Cargo.lock or bypass TLS |
+| rustfmt failure | `cargo fmt --all -- --check` shows the exact diff; personalized long names such as maintenance-notes have a known pre-alpha config.rs wrapping defect | Review the diff and handle the known source-generation defect in a focused correction; never disable the gate or call it a pin-check regression |
+| Rust compile error | Read the first error's file/type/span, then run focused tests | Fix the actual contract/type error; keep error sanitization and [backend tests](backend/tests) |
+| Wrong Node/npm | In frontend: `node --version`, `npm --version`; compare .node-version/packageManager and pin checker | Use matching tools; see [version map](MAINTENANCE.md#version-map); bundled npm is not selected automatically by packageManager |
+| npm lock mismatch | Review package.json/package-lock.json; `npm ci --no-audit --no-fund` reports inconsistency | Resolve intentional changes with selected npm, review the lock; do not delete integrity fields or force audit fixes |
+| Frontend build/type errors | Run `npm run typecheck`, then `npm run build`; inspect the first source error | Fix types/imports/assets; do not hide errors with `any` or skip the build |
+| Browser API unavailable | Confirm Rust is running; `curl --fail http://127.0.0.1:8080/health/ready`; inspect api.ts and Vite's proxy target | Match PORT/API_PROXY_TARGET, inspect safe backend logs; a working Vite page does not prove the API is running |
+| Native DB path/missing parent | Check cwd and the ordinary-file SQLITE_PATH in config.rs; parent is created only when writable | Use the correct owned local directory; never create/reset a guessed database to hide missing data |
+| DB permission/read-only error | Check parent/file ownership; container UID/GID is 10001; root read-only is intentional but /data must be writable | Provision the correct local volume/permissions per [maintenance](MAINTENANCE.md#docker-and-runtime-package-maintenance); no chmod 777 or live sidecar edits |
+| Migration error/checksum mismatch | Read safe startup diagnostics and compare immutable SQL with applied version/checksum metadata | Stop and preserve data; restore the correct historical file from your own Git history or plan reviewed recovery; never delete history rows |
+| Docker daemon unavailable | `docker info --format '{{.ServerVersion}}'` | Start/fix the intended daemon/context; do not change application data |
+| Docker build fails | Inspect the first failed build stage, pins, registry/CA access and free disk | Fix that stage; see [image maintenance](MAINTENANCE.md#docker-and-runtime-package-maintenance); retain known-good image/data |
+| Container startup/health fails | `docker compose ps`; `docker compose logs --tail 50 app` | Inspect migration/config/storage errors; readiness queries SQLite; [release/recovery](MAINTENANCE.md#releases-updates-and-recovery) before rollback |
+| Port occupied | Stop your own conflicting dev process, or use PORT with matching Vite target / Docker HOST_PORT as appropriate | Recheck the correct URL; do not stop unrelated services |
+| Missing persistent data/unexpected volume | `docker compose config --quiet` checks syntax only; privately inspect the actual /data mount as in maintenance | Stop writes and reconcile project/volume/path; never use volume removal or reseeding as a shortcut |
+| Pin check fails | `python3 scripts/check-toolchain-pins.py` names the inconsistent declarations | Review the intended relationship and [offline checker limits](MAINTENANCE.md#offline-consistency-check); coordinate legitimate updates |
+| Scanner install/DB/network fails | Read status/exit code and [scan setup](SECURITY-SCANNING.md); check pinned version, CA trust, registry access and writable cache | Fix infrastructure with TLS verification intact; an incomplete scan is not clean |
+| Vulnerabilities reported | Review advisory/version/feature/vendor/reachability evidence using [triage guidance](SECURITY-SCANNING.md) | Small verified remediation or a separately justified residual-risk decision; no blanket ignores/threshold changes |

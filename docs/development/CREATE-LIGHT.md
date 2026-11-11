@@ -34,6 +34,11 @@ Identity changes use known first-party file mappings and whole-token substitutio
 
 The output includes independent development, contribution, maintenance, security, AI-agent, Docker/Compose, and recovery instructions. The generated `MAINTENANCE.md` maps version pins and documents toolchain/dependency updates, the temporary SQLx pin, scanner upkeep and runtime package constraints without requiring this checkout. It does not include the original repository roadmap, setup prompts, platform guides, source Git history, or generator. The upstream MIT notice is retained; configure your own security contact, support policy, and project repository. There is no inherited claim of production readiness or successful deployment.
 
+The generated README is the first-day entry point. Its CONTRIBUTING guide covers
+independent Git initialization, module navigation, opt-in backend/frontend examples,
+migration development and safe troubleshooting; maintenance and recovery remain
+in the separate generated maintenance guide. No upstream remote is required.
+
 ## Run the new project
 
 Follow its README. From the generated root:
