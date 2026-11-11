@@ -113,6 +113,18 @@ class GenerationTests(unittest.TestCase):
             self.assertNotIn("--project templates/", guide)
             self.assertIn("--image maintenance-notes:maintenance-check", guide)
             self.assertIn("docker build --no-cache -t maintenance-notes:maintenance-check .", guide)
+            self.assertIn("## Releases, Updates and Recovery", guide)
+            headings = re.findall(r"^#{1,6} (.+)$", guide, re.M)
+            anchors = {re.sub(r"[^\w -]", "", heading.lower()).replace(" ", "-") for heading in headings}
+            readme = (project / "README.md").read_text()
+            for anchor in re.findall(r"\]\(MAINTENANCE\.md#([^)]+)\)", readme):
+                self.assertIn(anchor, anchors)
+            for helper in set(re.findall(r"/app/(sqlite-[a-z]+)", guide)):
+                self.assertTrue((project / "scripts" / (helper + ".sh")).is_file())
+                self.assertIn("/app/" + helper, (project / "Dockerfile").read_text())
+            for block in re.findall(r"```sh\n(.*?)```", guide, re.S):
+                self.assertNotRegex(block, r"(?:docker compose|dc)[^\n]*\bdown\b[^\n]*(?:--volumes| -v\b)")
+            self.assertIn('image: "${RELEASE_IMAGE:?Set RELEASE_IMAGE to a verified local image ID}"', guide)
             self.assertNotIn("@NAME@", guide)
             self.assertNotIn("@DISPLAY@", guide)
             self.assertNotIn(str(creator.ROOT), guide)
