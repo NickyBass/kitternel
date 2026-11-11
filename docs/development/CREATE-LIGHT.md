@@ -21,6 +21,7 @@ Dockerfile
 compose.yaml
 .github/workflows/ci.yml
 README.md
+MAINTENANCE.md
 AGENTS.md
 CONTRIBUTING.md
 SECURITY.md
@@ -31,7 +32,7 @@ For `garden-notes`, Cargo package/binary and Docker image are `garden-notes`, Ru
 
 Identity changes use known first-party file mappings and whole-token substitutions in one pass. npm metadata is updated as JSON; the single local Cargo lockfile package is updated explicitly. Unknown upstream identity/layout references fail generation rather than silently producing a partially adapted project. Keep the mapping and regression coverage updated when changing the template. The Linux process-name assertion accounts for the kernel's 15-byte comm limit.
 
-The output includes independent development, contribution, security, AI-agent, Docker/Compose, and recovery instructions. It does not include the original repository roadmap, setup prompts, platform guides, source Git history, or generator. The upstream MIT notice is retained; configure your own security contact, support policy, and project repository. There is no inherited claim of production readiness or successful deployment.
+The output includes independent development, contribution, maintenance, security, AI-agent, Docker/Compose, and recovery instructions. The generated `MAINTENANCE.md` maps version pins and documents toolchain/dependency updates, the temporary SQLx pin, scanner upkeep and runtime package constraints without requiring this checkout. It does not include the original repository roadmap, setup prompts, platform guides, source Git history, or generator. The upstream MIT notice is retained; configure your own security contact, support policy, and project repository. There is no inherited claim of production readiness or successful deployment.
 
 ## Run the new project
 

@@ -127,3 +127,27 @@ Future work: investigate the supported Ubuntu provider transition separately;
 do not force removal of protected packages. This step reduces operational exposure
 and does not mark the uutils vulnerability group resolved. Remote CI and platform
 integrations were not verified.
+
+## Step 7B.2: Independent maintenance guide
+
+Branch: `docs/generated-maintenance-guide`. Generated projects receive a personalized
+`MAINTENANCE.md`, linked from README, CONTRIBUTING and AGENTS. It covers ownership,
+pin locations, Rust/MSRV/Cargo, the temporary SQLx/SQLite binding constraint,
+Node/npm/frontend overrides, Docker/package maintenance, explicit GNU recovery
+commands, the stopped protected-provider replacement, and independent security upkeep.
+Release/rollback is an overview only; the detailed runbook remains separate work.
+
+Generator regressions (eight fast tests plus one optional five-name rustfmt test),
+Python/Git-only generation, nine standalone orchestration tests and eleven copied
+security policy tests passed. A fresh `maintenance-notes` application outside this
+checkout passed Compose configuration and its own RustSec/npm scans (zero findings);
+Cargo tree confirmed libsqlite3-sys 0.39.1. Local links, script paths, identities and
+scanner-version documentation are regression checked. No dependency update,
+Docker rebuild, live image scan, runtime/recovery drill or remote CI is claimed.
+
+Additional diagnostic: `cargo fmt --all -- --check` fails for the longer generated
+name `maintenance-notes` because its default SQLite-path line needs wrapping in
+`backend/src/config.rs`. The existing five-name Step 7B.1 matrix still passes; its
+import-group fix did not cover this length-dependent case. No application source
+was changed here; that defect needs a separate focused correction. Documentation
+and compiler/security procedures do not imply that this formatting failure passed.

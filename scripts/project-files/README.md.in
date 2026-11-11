@@ -2,6 +2,10 @@
 
 Standalone Rust/Axum/SQLite and React/TypeScript application. One Rust process serves the compiled frontend, API, and health endpoints. Authentication, authorization, sessions, and CSRF defenses are not implemented. This is a foundation preview, not a production-readiness guarantee.
 
+For independent toolchain, dependency, image and security updates, read
+[MAINTENANCE.md](MAINTENANCE.md). You own this application and may deliberately change
+its initial choices; no original starter checkout or synchronization is required.
+
 ## Docker first
 
 From this project's root, using Docker with BuildKit and Compose v2:
