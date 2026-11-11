@@ -48,13 +48,11 @@ async fn json(response: axum::response::Response) -> serde_json::Value {
 #[tokio::test]
 async fn health_and_database_greeting() {
     let (_directory, state) = fixture().await;
+    let greeting = serde_json::json!({"message":"Hello from Kitternel Light."});
     for (path, expected) in [
         ("/health/live", serde_json::json!({"status":"ok"})),
         ("/health/ready", serde_json::json!({"status":"ready"})),
-        (
-            "/api/hello",
-            serde_json::json!({"message":"Hello from Kitternel Light."}),
-        ),
+        ("/api/hello", greeting),
     ] {
         let response = request(&state, "GET", path).await;
         assert_eq!(response.status(), StatusCode::OK);

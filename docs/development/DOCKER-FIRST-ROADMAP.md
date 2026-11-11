@@ -350,3 +350,48 @@ runner and new remote CI outcomes remain unverified; no live vulnerability scans
 were run. Application Rust/frontend unit suites were not rerun for this follow-up;
 the clean Docker build compiled Rust and built the frontend. The separately known
 personalized config.rs formatting defect remains unchanged.
+
+## Step 7C: Generated Rust formatting stability
+
+Branch: `fix/generated-config-formatting`, based on main including merged PR #12.
+The known maintenance-notes failure was reproduced before editing: its personalized
+SQLite default made the lookup expression 103 columns, requiring rustfmt wrapping.
+The production default now lives in a private string constant, so the expression's
+layout does not depend on the project name. The SQLite path, override precedence,
+validation and allocation behavior are preserved; the generator is unchanged.
+
+The expanded matrix also exposed short-name wrapping changes for `a` in the
+default-path assertion and the HTTP test's expected greeting tuple. Test-local
+expected values now keep those expressions independent of substituted literal
+length. Expected values and assertions remain; no API or migration change is made.
+
+Executed verification on 2026-11-11:
+
+- Fast generator suite: 13 passed with one optional integration skipped. A new CLI
+  regression generates successfully with only Git on PATH and Python invoked by
+  its absolute path, without Cargo/rustfmt/Node. The opt-in suite passed all 14 tests.
+- Pinned rustfmt checked 42 generated applications: a, a-app, dev-notes,
+  audit-notes-7a, maintenance-notes, maple-notes, sunrise-notes, zebra-notes,
+  one-two-three-four, a 32-character name, and x repeated at every length 1..32.
+  The existing 33-character rejection remains. Every check preserved all generated
+  Rust file bytes and mtimes. Existing CI runs this integration without a new job.
+- Source backend format, locked check, all-target/all-feature Clippy with warnings
+  denied, and all 21 tests passed. Fresh external maintenance-notes passed format,
+  all 21 backend tests and a locked build. Generated `a` and the 32-character name
+  each passed all 6 configuration tests, including literal default and explicit
+  absolute/relative/space/Unicode path overrides and invalid-input rejection.
+- Two real native starts of maintenance-notes verified the default path and an
+  environment-selected path containing spaces. Each database had migration version
+  1 and passed integrity/readiness/API checks. The override used an independent
+  database and preserved known data in the original. Both owned processes stopped
+  cleanly. This probe used disposable assets/data, not a frontend production build.
+- Source and standalone offline pin checks, 21 pin regressions, 9 standalone
+  orchestration regressions, Python syntax and diff whitespace checks passed.
+  Generated Cargo/npm locks still match only the existing identity customization;
+  no dependency, lockfile, toolchain, migration, Docker or scanner changes occurred.
+
+Generated troubleshooting/maintenance instructions no longer advertise this defect
+as outstanding. Earlier entries retain historical failures. Docker, frontend and
+live scanner suites were not rerun because this correction changes formatting
+layout and configuration test coverage only. New remote CI outcomes are separate
+from the locally executed checks; no Step 8 or merge is included.

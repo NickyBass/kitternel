@@ -19,14 +19,30 @@ creator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(creator)
 
 
-# Cover imports before axum, between dependencies, and after std/tokio/tower.
-FORMAT_NAMES = ("a-app", "audit-notes-7a", "maple-notes", "sunrise-notes", "zebra-notes")
+# Cover the 1..32 character naming boundary (generate rejects 33), the wrapping
+# regression, multiple hyphens and imports before/between/after dependencies.
+FORMAT_NAMES = ("a", "a-app", "dev-notes", "audit-notes-7a", "maintenance-notes",
+                "maple-notes", "sunrise-notes", "zebra-notes", "one-two-three-four", "a" * 32)
 RUN_RUSTFMT = "--rustfmt" in sys.argv
 if RUN_RUSTFMT:
     sys.argv.remove("--rustfmt")
 
 
 class GenerationTests(unittest.TestCase):
+    def test_cli_generation_with_only_git_on_path(self):
+        with tempfile.TemporaryDirectory(prefix="git-only-generation-") as temporary:
+            root = Path(temporary)
+            tools = root / "tools"
+            tools.mkdir()
+            (tools / "git").symlink_to(shutil.which("git"))
+            environment = {**os.environ, "PATH": str(tools)}
+            project = root / "application"
+            result = subprocess.run([sys.executable, str(creator.ROOT / "scripts/create-light.py"),
+                                     "maintenance-notes", str(project)], env=environment,
+                                    text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue((project / "backend/src/config.rs").is_file())
+
     @unittest.skipUnless(shutil.which("bash"), "Browser CI uses Bash on Linux")
     def test_generated_browser_installation_retries_and_failure_propagation(self):
         with tempfile.TemporaryDirectory(prefix="browser-install-") as temporary:
@@ -139,6 +155,10 @@ class GenerationTests(unittest.TestCase):
                     # An application import must not share a rustfmt sorting group
                     # with dependencies whose order changes after customization.
                     crate = name.replace("-", "_")
+                    config = (destination / "backend/src/config.rs").read_text()
+                    self.assertIn(f'const DEFAULT_SQLITE_PATH: &str = "data/{name}.db";', config)
+                    # Keep the expected path independent of the default constant.
+                    self.assertIn(f'PathBuf::from("data/{name}.db")', config)
                     for path in (destination / "backend").rglob("*.rs"):
                         for group in path.read_text().split("\n\n"):
                             if f"use {crate}::" in group:
@@ -343,13 +363,20 @@ class GenerationTests(unittest.TestCase):
 class GeneratedFormattingTests(unittest.TestCase):
     def test_generated_names_pass_rustfmt(self):
         with tempfile.TemporaryDirectory(prefix="generated-format-") as temporary:
-            for name in FORMAT_NAMES:
+            # Sweep every supported length as well as representative identities.
+            # The fast tests separately assert rejection of 33-character names.
+            for name in (*FORMAT_NAMES, *("x" * length for length in range(1, 33))):
                 with self.subTest(name=name):
                     destination = creator.generate(name, Path(temporary) / name)
+                    sources = {path: (path.read_bytes(), path.stat().st_mtime_ns)
+                               for path in (destination / "backend").rglob("*.rs")}
                     result = subprocess.run(["cargo", "fmt", "--all", "--", "--check"],
                                             cwd=destination / "backend", text=True,
                                             capture_output=True, timeout=60)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(sources, {path: (path.read_bytes(), path.stat().st_mtime_ns)
+                                               for path in (destination / "backend").rglob("*.rs")},
+                                     "Formatting checks must not rewrite generated Rust files")
 
 
 if __name__ == "__main__":
