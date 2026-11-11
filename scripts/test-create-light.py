@@ -33,7 +33,7 @@ class GenerationTests(unittest.TestCase):
                                      "backend/migrations/0001_greeting.sql", "frontend/package-lock.json",
                                      "frontend/.node-version", "Dockerfile", "compose.yaml", ".dockerignore",
                                      ".github/workflows/ci.yml", ".github/workflows/security.yml", "SECURITY-SCANNING.md", ".env.example", ".gitignore", ".gitattributes",
-                                     "README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md", "LICENSE",
+                                     "README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md", "MAINTENANCE.md", "LICENSE",
                                      "scripts/sqlite-backup.sh", "scripts/sqlite-restore.sh",
                                      *(f"scripts/{runner}" for runner in creator.RUNNERS)):
                         self.assertTrue((destination / relative).is_file(), relative)
@@ -98,6 +98,27 @@ class GenerationTests(unittest.TestCase):
                     self.assertIn('docker build -t ' + name + ':local .\n', security)
                     self.assertIn('working-directory: backend\n', workflow)
                     self.assertIn('python3 ../scripts/backend-smoke.py', workflow)
+
+    def test_maintenance_guide_matches_the_standalone_project(self):
+        with tempfile.TemporaryDirectory(prefix="maintenance-guide-") as temporary:
+            project = creator.generate("maintenance-notes", Path(temporary) / "application")
+            guide = (project / "MAINTENANCE.md").read_text()
+            self.assertIn("Maintaining Maintenance Notes", guide)
+            self.assertIn("**maintenance-notes**", guide)
+            for name in ("README.md", "CONTRIBUTING.md", "AGENTS.md"):
+                self.assertIn("[MAINTENANCE.md](MAINTENANCE.md)", (project / name).read_text())
+            for script in re.findall(r"(?:python3|sh) (scripts/[A-Za-z0-9_.-]+)", guide):
+                self.assertTrue((project / script).is_file(), script)
+            self.assertIn("--project .", guide)
+            self.assertNotIn("--project templates/", guide)
+            self.assertIn("--image maintenance-notes:maintenance-check", guide)
+            self.assertIn("docker build --no-cache -t maintenance-notes:maintenance-check .", guide)
+            self.assertNotIn("@NAME@", guide)
+            self.assertNotIn("@DISPLAY@", guide)
+            self.assertNotIn(str(creator.ROOT), guide)
+            tools = json.loads((project / "scripts/security-tools.json").read_text())
+            for version in (tools["cargo-audit"], tools["npm"], tools["trivy"]):
+                self.assertIn(version, guide)
 
     def test_invalid_names_do_not_create_destinations(self):
         with tempfile.TemporaryDirectory() as temporary:

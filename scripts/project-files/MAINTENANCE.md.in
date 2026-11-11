@@ -1,0 +1,321 @@
+# Maintaining @DISPLAY@
+
+This guide belongs to **@NAME@**. You own the generated source, configuration,
+database, migration history and maintenance decisions. You may deliberately change
+any initial architectural choice. No original starter checkout, shared runtime,
+mandatory CLI, upstream Git synchronization or upgrade service is required.
+Update your own repository through small reviewed changes; do not merge another
+starter's history as an application upgrade mechanism.
+
+Maintainers own security reporting, supported versions, monitoring, backups,
+recovery testing and update scheduling. Keep the upstream MIT notice in
+[LICENSE](LICENSE). Review [SECURITY.md](SECURITY.md) and configure your own private
+reporting contact before accepting sensitive reports.
+
+## Choose the update scope
+
+- **Routine dependency update:** stays inside manifest constraints, but still needs
+  lockfile review and relevant tests. Semver compatibility is not a guarantee.
+- **Major upgrade:** changes constraints/APIs or compatibility requirements; read
+  upstream release notes, migrate deliberately and test dependent components.
+- **Toolchain upgrade:** changes compiler/build tooling, not automatically every
+  library. Check dependencies' compiler and runtime requirements.
+- **Security remediation:** establish affected versions, dependency paths, vendor
+  fixes and reachability before choosing the smallest compatible correction.
+- **Application release:** deploys a tested source/image revision; dependency updates
+  and schema changes must be assessed before replacement.
+
+Do not combine unrelated upgrades or automatically apply forced audit fixes. Record
+what changed, why, tests actually executed and residual risks in your own PRs.
+
+## Version map
+
+This is the initial snapshot recorded on 2026-11-11, not a claim about the newest
+upstream versions. After changes, the linked project files are authoritative.
+
+| Component | Initial selection | Files to review together |
+| --- | --- | --- |
+| Rust compiler | 1.99.1 | [toolchain](backend/rust-toolchain.toml), [Dockerfile](Dockerfile) builder tag/digest and explicit `cargo +1.99.1`, [security tools](scripts/security-tools.json) installer toolchain |
+| Rust MSRV | 1.99 | [Cargo manifest](backend/Cargo.toml), dependency MSRVs and your supported-target tests |
+| Rust libraries | Manifest constraints plus resolved lockfile | [Cargo.toml](backend/Cargo.toml), [Cargo.lock](backend/Cargo.lock) |
+| Node.js | 24.22.1 | [Node selection](frontend/.node-version), [package engines](frontend/package.json) (`>=24 <25`), [Dockerfile](Dockerfile) builder tag/digest |
+| npm | 11.9.0 | [packageManager](frontend/package.json), [security tools](scripts/security-tools.json), explicit installation in [security CI](.github/workflows/security.yml) |
+| Frontend libraries | Constraints plus resolved lockfile | [package.json](frontend/package.json), [package-lock.json](frontend/package-lock.json) |
+| Runtime | Ubuntu 26.04 LTS, digest-pinned | [Dockerfile](Dockerfile), installed package advisories and recovery tooling |
+| Security scanners | cargo-audit 0.23.0; npm 11.9.0; Trivy 0.76.2 | [tool pins/checksum](scripts/security-tools.json), [installer](scripts/install-security-tools.sh), [scan wrapper](scripts/security-scan.py), [security CI](.github/workflows/security.yml), [scan guide](SECURITY-SCANNING.md) |
+
+[Application CI](.github/workflows/ci.yml) reads the Rust toolchain and Node version
+files. Its Node installation supplies a bundled npm; the security job separately
+installs the exact audited npm version. `packageManager` records a selection but does
+not itself install npm. Check `node --version` and `npm --version` locally. Scanner
+version mismatches fail rather than silently changing enforcement.
+
+## Rust toolchain and libraries
+
+Run native Cargo commands from `backend`, so rustup selects its pinned toolchain.
+A C compiler/linker is required for bundled SQLite. See [README](README.md) for setup.
+
+Selected Rust is the compiler used for development/builds. `rust-version` declares
+an MSRV, not necessarily the same patch release. Testing only on the selected
+compiler does not prove the full MSRV/target support matrix.
+
+For a compiler update:
+
+1. Read compiler/dependency release notes and target support. Choose an explicit
+   version in `backend/rust-toolchain.toml`; keep rustfmt/Clippy components.
+2. Update the Rust builder tag **and verified digest**, its explicit Cargo toolchain
+   selection in Dockerfile, and the installer toolchain in security-tools.json.
+   Updating only rust-toolchain.toml leaves those other selections unchanged.
+3. Decide whether to change the declared MSRV. Test it separately if claiming support.
+4. Install the selected compiler with rustup, then run the checks below and rebuild
+   the production image when packaging/toolchain changes.
+
+Cargo.toml contains allowed dependency constraints and features; Cargo.lock records
+exact resolved versions and Git revisions. Commit reviewed lockfile changes with
+manifest changes. Do not delete a lockfile just to make a failed build pass.
+
+From `backend`, inspect the graph and preview a focused compatible update:
+
+```sh
+cargo tree --locked
+cargo update -p axum --dry-run
+```
+
+The preview is not an update or a security assessment. For an intentional compatible
+update, `cargo update -p axum` changes the lockfile within existing constraints.
+For a major upgrade, edit the chosen constraint/features in Cargo.toml, resolve the
+lockfile with Cargo, adapt code, and inspect the resulting dependency diff. Do not
+use `--locked` for the deliberate resolution step; use it for subsequent validation:
+
+```sh
+cargo fmt --all -- --check
+cargo check --locked
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked
+cargo build --locked
+```
+
+Run RustSec from the project root as described in the security section. A successful
+compile alone does not establish migration or runtime compatibility.
+
+## SQLx, bundled SQLite and migration history
+
+The initial [manifest](backend/Cargo.toml) pins official upstream SQLx commit
+`10462fa4414c6c7f1ed1d39bb31678e3b726878c`. This temporary immutable Git pin allows
+`libsqlite3-sys` 0.39.x; the initial lock resolves 0.39.1, bundling SQLite 3.54.1.
+It addresses RUSTSEC-2026-0459, whose patched binding range starts at 0.39.0.
+
+The published SQLx 0.9.0 examined during remediation limited the binding to
+`>=0.30.1, <0.38.0`. Blindly replacing the Git pin with that release would lose the
+compatible patched range. Do not assume a newer fixed release exists: inspect the
+release's actual constraints, feature selection, MSRV and advisory status first.
+The pinned commit includes upstream changes beyond tag 0.9.0, so assess API behavior
+as well as the SQLite constraint when replacing it.
+
+From `backend`, check the actual resolution:
+
+```sh
+cargo tree --locked -i libsqlite3-sys
+cargo tree --locked -e features
+```
+
+Keep the narrow SQLite features unless deliberately reviewed: bundled SQLite,
+unlock notification, migration and macros. Do not accidentally enable extension
+loading/deserialization through a broader feature. Do not force an incompatible
+binding or substitute an unreviewed fork merely to clear an audit.
+
+Replace the temporary pin only when the selected upstream release supports a
+patched binding and the application's API/MSRV requirements. Review Cargo.lock,
+run RustSec and the native tests, then repeat Docker, migration and recovery checks.
+The backend bundles SQLite; the runtime `sqlite3` CLI is a separate OS package used
+for recovery. Assess **both** when changing SQLite or runtime packages.
+
+[Migration files](backend/migrations) are embedded at compile time. Add a new
+versioned file; never silently edit applied migrations or delete migration records.
+Preserve SQLx checksums and test both fresh databases and retained existing data.
+[build.rs](backend/build.rs) watches migration changes so the binary is rebuilt.
+Back up and verify recovery before schema changes. Destructive changes need a
+separate reviewed plan; startup migrations do not provide automatic downgrade.
+
+## Node.js, npm and frontend libraries
+
+Node.js and npm are the chosen frontend toolchain, used to develop and compile
+assets. Production serves those assets through Rust; no Node process is required.
+
+For a Node update, read the engine requirements of Vite, plugins and test tools.
+Update frontend/.node-version, package.json engines and the Node Docker builder
+(tag and verified digest) together. Coordinate `@types/node` when appropriate.
+For npm, update packageManager, security-tools.json and the explicit npm installation
+in security CI. Select/install the intended npm in your user-managed Node environment
+and confirm the version before running audits; do not disable TLS verification.
+
+From `frontend`, inspect available updates with `npm outdated`. Its nonzero exit can
+mean outdated packages, not infrastructure failure. For an intentional compatible
+React update, `npm update react react-dom` resolves within existing constraints and
+updates installed packages/lockfile. Major React upgrades may require coordinated
+React DOM and type packages. Vite upgrades also require checking its React/Tailwind
+plugins, Node engines and Vitest compatibility. TypeScript changes need typechecking
+and test review. Choose versions from upstream release notes rather than a blind
+"latest" update.
+
+Edit package.json deliberately for changed constraints, then run `npm install` with
+the selected npm to resolve package-lock.json. Review both files. Afterwards verify
+that a locked clean install works; do not hand-edit integrity entries or use forced
+`npm audit fix` as the upgrade plan:
+
+```sh
+npm ci --no-audit --no-fund
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+The initial `minimatch` override is 11.0.5, introduced for development-tooling advisory
+GHSA-g3hv-75wg-m249. This version requires compatible Node tooling. Reassess with
+`npm explain minimatch` and current upstream dependency requirements/advisories.
+Remove the override only when parent tools resolve compatible patched versions
+without it; regenerate the lockfile and repeat locked install, typecheck, lint,
+tests, build and both npm audit scopes. Do not assume a clean audit alone proves
+that removing the override is compatible.
+
+## Docker and runtime package maintenance
+
+The [Dockerfile](Dockerfile) initially pins Node 24.22.1/bookworm-slim and Rust
+1.99.1/slim-bookworm builders, and Ubuntu 26.04 LTS runtime, all by digest. Review
+publisher release/security notices and verify the selected tag/digest and target
+architectures using the publisher's official registry. A tag can move; a digest
+selects content. Change the reviewed tag and matching digest together. Do not copy
+an unverified digest from a third-party recommendation.
+
+APT installs/upgrades against live Ubuntu repositories. Pinning the base digest
+therefore does **not** guarantee identical installed packages on later builds.
+Rebuild to obtain available package updates and scan the actual final candidate.
+When validating package refreshes, use a clean build so a cached APT layer does not
+hide changes. From the generated project root:
+
+```sh
+docker build --no-cache -t @NAME@:maintenance-check .
+docker compose config --quiet
+python3 scripts/docker-smoke.py --image @NAME@:maintenance-check -v
+python3 scripts/sqlite-backup-smoke.py --image @NAME@:maintenance-check -v
+python3 scripts/security-scan.py image --project . --image @NAME@:maintenance-check
+```
+
+Build once and reuse the candidate for these tests/scans; registry access, Docker
+BuildKit and Compose v2 are required. In a trusted TLS-proxy environment the Dockerfile
+also supports a public CA through the `proxy_ca` BuildKit secret, as explained in
+the scan guide; never turn off certificate verification.
+For changes not involving OS refresh, normal build caching may be used deliberately.
+
+Retain UID/GID 10001, read-only runtime compatibility, writable local `/data` storage,
+one SQLite instance and serialized replacement, health checks and graceful shutdown.
+The current Compose grace period is 15 seconds; shutdown timeout defaults to 10.
+Do not assume unhealthy status triggers automatic restart. Base/package changes must
+retain helper compatibility, ownership, certificates and the ability to back up and
+restore. Consult [README recovery instructions](README.md#consistent-backup-and-restore).
+
+### GNU recovery decision and residual uutils risk
+
+Recovery helpers explicitly use `/usr/bin/gnudirname`, `/usr/bin/gnurealpath`,
+`/usr/bin/gnumktemp`, `/usr/bin/gnurm`, `/usr/bin/gnusync` and `/usr/bin/gnuln`.
+They check executability/GNU identity before accessing data, rather than falling
+back to PATH or default uutils commands. These names are supplied by the selected
+Ubuntu runtime; another host/image must supply compatible tools or helpers fail.
+This changes maintenance command selection, not normal Rust startup.
+
+A provider replacement investigation was stopped: a safe supported transition was
+not established within the constraints. `coreutils` is essential, and installed
+`coreutils-from-uutils` is protected and requires rust-coreutils. GNU is already
+installed, but ordinary tested APT replacement plans failed; the explicit removal
+plan requested an essential/protected removal override. Do not force removals,
+edit package status, or manually replace package-managed executables.
+
+The uutils package remains installed and its vulnerabilities were **not** eliminated.
+Explicit GNU recovery commands reduce operational use, not scanner inventory.
+Track future vendor fixes or a supported transition separately with fresh evidence.
+Do not treat a vendor severity change or absence of a fix as proof of safety.
+
+## Security tools and findings
+
+See [SECURITY-SCANNING.md](SECURITY-SCANNING.md) for installation, exact scan commands,
+report handling and exceptions. The project includes its own installer, pins,
+wrapper and [workflow](.github/workflows/security.yml). No original checkout is needed.
+With pinned tools installed/on PATH, run from this project's root:
+
+```sh
+python3 scripts/security-scan.py rust --project .
+python3 scripts/security-scan.py npm --project .
+```
+
+The npm wrapper checks all and production-only graphs. Use the image command above
+only after building the image. Direct `npm audit` is useful for investigation but
+its default exit policy differs from this project's production-only enforcement.
+RustSec checks every lockfile vulnerability; informational warnings are visible
+separately. npm blocks production HIGH/CRITICAL; image scanning blocks HIGH/CRITICAL
+even without a fix. Other findings remain reportable. Exit 0 means completed and
+nonblocking, 1 means blocking findings, 2 means incomplete/infrastructure failure.
+A green result is not proof that the application is secure.
+
+For a scanner update, independently verify the official release/version and trusted
+checksums. Update security-tools.json; for Trivy also verify/replace its Linux/amd64
+archive SHA-256 against the official release metadata before installation. The
+installer verifies that checksum. cargo-audit installation uses an exact version
+and `--locked`; review upstream provenance and dependency changes as well. Update
+any explicit workflow install versions (notably npm), guide snapshots and relevant
+regressions. Keep GitHub Actions pinned to reviewed commits. Run the copied policy
+regressions and fresh scans, including failure cases:
+
+```sh
+python3 scripts/test-security-scan.py -v
+```
+
+The download installer supports Trivy Linux/amd64; other hosts need a verified
+installation of the pinned scanner. Workflow artifact upload and optional Code
+Scanning depend on your repository settings; review triggers/default branch and
+permissions. Configure your own reporting contact and supported releases.
+
+For unresolved findings, record date, scanner/database, advisory/package/version,
+dependency path or OS family, runtime use/reachability evidence, vendor backport/fix
+status, owner, decision and reassessment condition/date in your own maintenance
+record. Package presence, reachable vulnerable code, a vendor backport, accepted
+residual risk and confirmed remediation are distinct conclusions. Unknown
+reachability is not proof of absence. Confirm remediation with the relevant scan
+and regression tests. Do not lower thresholds or add blanket ignores to pass CI.
+
+## Verification checklist by risk
+
+For every update, review source/manifest/lockfile diffs, pin consistency and release
+notes; run checks relevant to affected code and preserve evidence/limitations.
+Documentation-only changes need link/path/generation checks, not an automatic
+full image rebuild. Routine library changes need affected tests, locked builds and
+dependency scans. Broader runtime/compiler/SQLite changes need the complete candidate
+validation and disposable-volume recovery checks. No test should use deployment data.
+
+- Rust format/check/Clippy/tests/build; frontend locked install/typecheck/lint/tests/build
+  for affected components, using the commands above and [README](README.md).
+- Native process/browser tests when behavior or HTTP/assets change; see README.
+- Compose configuration, image build, health/API/static assets, non-root/read-only,
+  graceful shutdown and persistence tests for packaging/runtime changes.
+- Migration review, fresh/existing database compatibility, verified backups and
+  recovery for database/storage changes. For dependency/base upgrades with unchanged
+  migration files, the existing [upgrade drill](scripts/sqlite-upgrade-smoke.py)
+  accepts `--previous-image` and `--image` as documented in README; it is not rollback.
+- RustSec, both npm scopes and the final-image scan as relevant. Review residual findings.
+- Confirm all commands/scripts/docs belong to this application and CI has no required
+  reference to the original starter. Record actual remote CI outcomes separately.
+
+## Release and rollback overview
+
+Retain the previously deployed application image identity and a verified database
+backup before replacement. A mutable local tag alone is not a rollback archive.
+Keep the Compose project/volume identity stable and never remove production volumes
+as an ordinary update step. Application rollback changes the executable; database
+recovery restores data and can discard writes since the snapshot. SQLx startup
+migrations are not automatically reversed. A schema change may prevent the older
+application from starting; do not edit migration history to simulate a downgrade.
+
+See [README](README.md) for the existing operational boundaries and backup procedure.
+This overview does not supply an automatic release controller, volume cutover or
+complete release/recovery runbook. Plan and verify those operator decisions before
+production use; never infer schema compatibility from a healthy new container.

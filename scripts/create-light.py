@@ -108,7 +108,7 @@ def generate(name, destination):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding="utf-8", newline="\n")
             target.chmod(source.stat().st_mode & 0o777)
-        for filename in ("README.md.in", "AGENTS.md.in", "CONTRIBUTING.md.in", "SECURITY.md.in"):
+        for filename in ("README.md.in", "AGENTS.md.in", "CONTRIBUTING.md.in", "SECURITY.md.in", "MAINTENANCE.md.in"):
             source = ROOT / "scripts/project-files" / filename
             if source.is_symlink() or not source.is_file():
                 raise ValueError(f"Expected an ordinary documentation template: {filename}")

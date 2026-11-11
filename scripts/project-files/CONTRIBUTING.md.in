@@ -2,6 +2,8 @@
 
 Read AGENTS.md and use the development and verification commands in README.md. Keep changes focused and English-only. Include regression tests for changed behavior. Commit Cargo/npm lockfile changes deliberately and review dependency advisories; never disable TLS or integrity checks. Preserve the MIT notice.
 
+For toolchain, dependency and security updates, follow [MAINTENANCE.md](MAINTENANCE.md).
+
 Add new versioned SQL migrations rather than editing applied ones. Test both new databases and upgrades that retain existing data. Keep destructive changes out of automatic startup; back up and review recovery separately.
 
 PR descriptions must state the concrete problem, resulting behavior, commands actually executed and their results, and remaining risks. Do not claim local checks prove remote CI or deployment success. Test only disposable resources; do not replace smoke-test volumes with deployment storage.
