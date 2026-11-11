@@ -4,7 +4,7 @@ Read [AGENTS.md](AGENTS.md) and the [implementation plan](docs/development/IMPLE
 
 ## Prerequisites and first run
 
-Use Rust 1.99.1 through rustup, including rustfmt and Clippy, Node 24.22.1, npm 11, a native C toolchain/linker, and Python 3 with its standard SQLite module. The version files under `templates/light` are authoritative. SQLx builds bundled SQLite; no SQLx CLI or database server is required. Docker with BuildKit and Compose v2 is required for container and backup/restore verification. Linux is the tested deployment target.
+Use Rust 1.99.1 through rustup, including rustfmt and Clippy, Node 24.22.1, npm 11, a native C toolchain/linker, and Python 3.11+ with its standard SQLite module. The version files under `templates/light` are authoritative. SQLx builds bundled SQLite; no SQLx CLI or database server is required. Docker with BuildKit and Compose v2 is required for container and backup/restore verification. Linux is the tested deployment target.
 
 ```sh
 git clone https://github.com/NickyBass/kitternel.git
@@ -23,6 +23,16 @@ For frontend hot reload, leave the backend running and run `npm run dev` from `t
 Cloud tasks already have an isolated checkout. Reuse it; do not create a Git worktree unless explicitly requested. Do not overwrite pre-existing changes or print credentials during diagnosis.
 
 ## Required checks
+
+From the repository root, run the offline declaration checks before builds:
+
+```sh
+python3 scripts/check-toolchain-pins.py
+python3 scripts/test-toolchain-pins.py -v
+```
+
+These require only Python 3.11+; see the generated maintenance guide for the checked
+relationships and limitations. They do not install tools or rewrite versions.
 
 Run from `templates/light/frontend`:
 

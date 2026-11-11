@@ -2,6 +2,7 @@
 """Test standalone generation; opt into pinned Rust formatting with --rustfmt."""
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -131,6 +132,19 @@ class GenerationTests(unittest.TestCase):
             tools = json.loads((project / "scripts/security-tools.json").read_text())
             for version in (tools["cargo-audit"], tools["npm"], tools["trivy"]):
                 self.assertIn(version, guide)
+
+    def test_standalone_pin_checker_without_external_tools(self):
+        with tempfile.TemporaryDirectory(prefix="standalone-pins-") as temporary:
+            project = creator.generate("pin-notes", Path(temporary) / "application")
+            environment = os.environ.copy()
+            environment["PATH"] = ""
+            result = subprocess.run([sys.executable, str(project / "scripts/check-toolchain-pins.py")],
+                                    cwd=temporary, env=environment, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("PASS:", result.stdout)
+            workflow = (project / ".github/workflows/ci.yml").read_text()
+            self.assertIn("python3 scripts/check-toolchain-pins.py", workflow)
+            self.assertIn("working-directory: .", workflow)
 
     def test_invalid_names_do_not_create_destinations(self):
         with tempfile.TemporaryDirectory() as temporary:
