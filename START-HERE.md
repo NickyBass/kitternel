@@ -1,10 +1,13 @@
-# Start Kitternel with Codex Cloud
+# Start here
 
-1. Create a GitHub repository named `kitternel`. Keep it private until name/trademark checks are complete.
-2. Add `AGENTS.md` from this pack to the repository root and commit it.
-3. Connect/select the repository in Codex Cloud.
-4. Paste the full contents of `docs/development/CODEX-FIRST-TASK.md` into a new Codex task.
-5. Review the plan and resulting pull request. Check CI results and whether Docker tests actually ran.
-6. Do not deploy to production before reviewing security, SQLite persistence, backup/restore, and platform-specific settings.
+New to Kitternel? Use the [README quick start](README.md#quick-start) to generate
+and run your own standalone application. For contributing, read
+[CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
-`AGENTS.md` remains in the repository root. The initial task prompt lives at `docs/development/CODEX-FIRST-TASK.md`. Review `docs/development/IMPLEMENTATION-PLAN.md` before starting implementation.
+Preparing the public alpha? Follow the
+[publication checklist](docs/releases/PUBLICATION-CHECKLIST.md). The original
+repository setup prompt in [CODEX-FIRST-TASK.md](docs/development/CODEX-FIRST-TASK.md)
+and initial [implementation plan](docs/development/IMPLEMENTATION-PLAN.md) are
+historical development context, not instructions to recreate this repository or
+permission to publish it. Name/trademark, privacy and release decisions remain
+maintainer checks.

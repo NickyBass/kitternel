@@ -18,7 +18,7 @@ cargo run --locked
 
 From another terminal, check `/health/live`, `/health/ready`, and `/api/hello` on port 8080. Open the root page on that same machine. In a remote/cloud task, your own browser's localhost is a different computer; interactive preview depends on the client, while browser tests can run inside the task.
 
-For frontend hot reload, leave the backend running and run `npm run dev` from `templates/light/frontend`. Vite uses port 5173 and proxies API/health to port 8080. Export `API_PROXY_TARGET=http://127.0.0.1:8081` if the backend uses a different port. The [README](README.md) documents runtime configuration and all defaults. `.env.example` is a reference; the backend does not load `.env` files automatically.
+For frontend hot reload, leave the backend running and run `npm run dev` from `templates/light/frontend`. Vite uses port 5173 and proxies API/health to port 8080. Export `API_PROXY_TARGET=http://127.0.0.1:8081` if the backend uses a different port. The [technical reference](docs/development/LIGHT-REFERENCE.md#runtime-configuration) documents runtime configuration and all defaults. `.env.example` is a reference; the backend does not load `.env` files automatically.
 
 Cloud tasks already have an isolated checkout. Reuse it; do not create a Git worktree unless explicitly requested. Do not overwrite pre-existing changes or print credentials during diagnosis.
 

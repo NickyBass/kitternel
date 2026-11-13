@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="284" viewBox="0 0 720 284" role="img" aria-labelledby="title desc">
+  <title id="title">One application. Independent source.</title>
+  <desc id="desc">The browser runs React. A Docker container serves static assets and the Axum API. SQLx connects the API to SQLite in a separate persistent volume.</desc>
+  <rect width="720" height="284" rx="18" fill="#0d1421"/>
+  <g font-family="system-ui, sans-serif">
+    <text x="28" y="35" fill="#99f6d5" font-size="13" letter-spacing="2">PRODUCTION / ONE ORIGIN</text>
+    <rect x="28" y="63" width="176" height="86" rx="10" fill="#192638" stroke="#405369"/>
+    <text x="46" y="95" fill="#f0f5fa" font-size="21" font-weight="600">Browser</text>
+    <text x="46" y="126" fill="#c4d0dc" font-size="15">React + TypeScript</text>
+    <path d="M212 106h58m-8-6 8 6-8 6" fill="none" stroke="#99f6d5" stroke-width="2"/>
+    <rect x="280" y="63" width="412" height="86" rx="10" fill="#192638" stroke="#99f6d5"/>
+    <text x="300" y="95" fill="#f0f5fa" font-size="21" font-weight="600">Docker / Rust + Axum</text>
+    <text x="300" y="126" fill="#c4d0dc" font-size="15">Static assets · /api · /health</text>
+    <path d="M486 157v30m-6-8 6 8 6-8" fill="none" stroke="#99f6d5" stroke-width="2"/>
+    <rect x="280" y="199" width="412" height="57" rx="10" fill="#192638" stroke="#405369"/>
+    <text x="300" y="234" fill="#f0f5fa" font-size="19">SQLite / persistent volume</text>
+    <text x="502" y="177" fill="#c4d0dc" font-size="14">SQLx</text>
+    <text x="28" y="216" fill="#c4d0dc" font-size="15">No shared</text>
+    <text x="28" y="239" fill="#c4d0dc" font-size="15">Kitternel runtime.</text>
+  </g>
+</svg>
