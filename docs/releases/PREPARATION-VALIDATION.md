@@ -93,12 +93,24 @@ root (which has no root Dockerfile) and generation encountered an existing test
 destination. Those setup errors are not passing attempts; the subsequent isolated
 fresh-clone sequence above completed successfully. No source correction was needed.
 
-## Remaining review item: supplied logo
+## Historical observation: supplied logo during Step 8B
 
-The green/magenta wordmark is visible in the task conversation, but its original
-PNG bytes are not available among the uploaded workspace files. Do not reconstruct,
-redraw or silently substitute it. The README retains an accessible text hero and
-original static architecture diagram without a broken image reference. This PR
-stays a draft until the original PNG can be copied unchanged as a local asset and
-its light/dark rendering checked. The social-preview upload remains a separate
-manual maintainer action; no repository setting was changed.
+The following records the original preparation state, not current completion:
+
+> The green/magenta wordmark is visible in the task conversation, but its original
+> PNG bytes are not available among the uploaded workspace files. Do not reconstruct,
+> redraw or silently substitute it. The README retains an accessible text hero and
+> original static architecture diagram without a broken image reference. This PR
+> stays a draft until the original PNG can be copied unchanged as a local asset and
+> its light/dark rendering checked. The social-preview upload remains a separate
+> manual maintainer action; no repository setting was changed.
+
+Status verified on 2026-11-13 against main commit
+`35e7b81093661573b32ee4120e00284509194c55`: the logo exists at
+`docs/assets/kitternel-logo.png` and is referenced by the root README.
+[PR #14](https://github.com/NickyBass/kitternel/pull/14) is merged; GitHub records
+the merge at 2026-11-13 16:54:19 UTC. The logo was added afterward in
+`63fc43aa686af1746c77b769c47ff162ae624360`, with the README reference present at
+the inspected main commit. These repository/API observations supersede the missing
+file and draft status above; they do not claim new visual or functional checks.
+Social-preview configuration remains a separate manual maintainer action.
