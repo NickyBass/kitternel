@@ -100,6 +100,13 @@ Tests must use temporary databases or disposable volumes. The supported deployme
 
 Explain the concrete problem and resulting behavior, list commands actually executed and their results, and identify risks/unverified platforms. Include regression tests and documentation with behavior changes. Keep unrelated formatting/refactoring out of the change. Pin CI actions to verified commit SHAs and keep workflow permissions minimal.
 
+GitHub Actions checks execute contributor-controlled code. Passing CI does not
+prove that proposed workflow or test changes preserve the original security policy.
+Before merging external contributions, the maintainer must review changes to
+workflows, scripts, dependencies, Dockerfiles, generator templates and test logic.
+Required checks should originate from GitHub Actions and correspond to the reviewed
+commit; green results do not replace that review.
+
 Report vulnerabilities using [SECURITY.md](SECURITY.md). Dependency checks can be run with `npm audit` from the frontend and `cargo audit` from the backend when cargo-audit is installed. Review advisory applicability and compatibility; do not disable integrity/TLS checks, suppress assertions, or blindly apply a downgrade suggested by audit tooling.
 
 The existing [MIT license](LICENSE) remains in place. Do not invent a copyright holder or alter licensing as part of an unrelated contribution.
