@@ -1,6 +1,9 @@
 <div align="center">
 
-# Kitternel
+<p align="center">
+  <img src="docs/assets/kitternel-logo.png" width="300" alt="Kitternel Logo">
+</p>
+
 
 ### Your stack. Your code. Your rules.
 
