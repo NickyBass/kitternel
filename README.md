@@ -1,189 +1,151 @@
+<div align="center">
+
 # Kitternel
 
-An open-source, AI-native Rust web development toolkit focused on small, maintainable applications and predictable deployment.
+### Your stack. Your code. Your rules.
 
-## Current status
+A lightweight, Docker-first full-stack starter built with **Rust, React and SQLite**.<br>
+Generate an independent application and make it entirely yours.
 
-Light milestones 1–5 provide a Rust/Axum backend with SQLite and a responsive React/TypeScript frontend. One application process serves the built frontend, API, and health endpoints. Configuration validation, JSON lifecycle logs, versioned migrations, a persistent greeting, and bounded graceful shutdown are included. A canonical Docker image and Compose configuration are included. Contributor/security documentation, platform configuration guides, and tested local backup/restore helpers are included. Real Dokploy/Coolify deployments remain unverified. Authentication and authorization are not provided. This is not a production-ready starter yet.
+**Rust / Axum** · **React / TypeScript** · **SQLite / SQLx** · **Vite / Tailwind CSS**
 
-- **Light:** Rust, Axum, SQLite, React, TypeScript.
-- **Advanced (later):** Rust, Axum, PostgreSQL, React, TypeScript.
+[Get started](#quick-start) · [Architecture](#architecture) · [Alpha notes](docs/releases/v0.1.0-alpha.1.md) · [Contribute](CONTRIBUTING.md)
 
-See the [implementation plan](docs/development/IMPLEMENTATION-PLAN.md) for architecture, acceptance criteria, and trade-offs. The initial Light foundation is implemented. Authentication/authorization hardening and Advanced remain later stages, with separate design and approval.
+**Public alpha preparation — `v0.1.0-alpha.1`**<br>
+Foundation preview. Authentication is not included. No production-readiness claim.
 
-## Guides and feature status
+</div>
 
-- [Contributing](CONTRIBUTING.md): prerequisites, local workflow, required checks, and migration rules.
-- [Security policy](SECURITY.md): current boundaries and sensitive reporting.
-- [Step-by-step Docker installation](docs/deployment/docker-installation.md), [Docker reference](docs/deployment/docker.md), [Dokploy](docs/deployment/dokploy.md), [Coolify](docs/deployment/coolify.md).
-- [Backup and restore](docs/deployment/backup-restore.md), [troubleshooting](docs/deployment/troubleshooting.md), [verification record](docs/development/verification.md).
+---
 
-| Capability | Status |
+## Build it. Own it.
+
+Kitternel gives you a complete application, then gets out of the way. The generated
+source belongs in your own repository, with its own builds, tests, documentation
+and deployment. Keep the initial choices or evolve them for your application.
+
+No Kitternel CLI, shared runtime, upstream remote or update service is required
+after generation. You own dependency updates and operational decisions too.
+
+## What you get
+
+| Application | Delivery and maintenance |
 | --- | --- |
-| Axum + SQLite API, React/TypeScript/Tailwind UI | Implemented and tested locally |
-| HTTP limits, safe configuration, structured diagnostics | Implemented with regression tests |
-| Canonical Docker image and persistent Compose storage | Implemented and tested on Linux/amd64 |
-| Consistent SQLite snapshot/export/restore to a fresh volume | Implemented; local Docker drill exercised |
-| Dokploy and Coolify settings | Documented from official sources; real deployments unverified |
-| GitHub Actions | Configured; remote run status must be checked on GitHub |
-| Vulnerability scans | RustSec/npm/final-image tooling; [policy and limits](docs/development/SECURITY-SCANNING.md); blocking findings require triage |
-| Authentication, authorization, sessions, CSRF | Later hardening stage; not implemented |
-| Advanced / PostgreSQL | Later stage; not implemented |
-
-No one-click deployment, zero-downtime, recovery-time, capacity, or production-readiness guarantee is made. See the verification record for the scope of actual checks.
-
-## Create your own application
-
-Run `python3 scripts/create-light.py garden-notes ../garden-notes` from this Git checkout. The new destination must not exist. See the [standalone creation guide](docs/development/CREATE-LIGHT.md) for naming rules, generated files, customization, and verification limits.
+| **Rust + Axum + Tokio** — typed API, safe errors, health endpoints and bounded shutdown | **One Docker runtime** — compiled frontend and Rust backend; no Node process in production |
+| **React + TypeScript + Vite + Tailwind** — responsive UI, loading/error/retry states, same-origin API | **Persistent SQLite** — SQLx migrations, WAL and a dedicated local data volume |
+| **Tests at several levels** — Rust, component, browser and real-process checks | **Independent CI and security tooling** — pinned tools, explicit gates and scan reports |
+| **Owned source** — backend, frontend, both lockfiles, tests and configuration | **Operational handoff** — maintenance guide, consistent backup helpers and independent-volume restore drills |
 
 ## Quick start
 
-Install [rustup](https://rustup.rs/) using the official instructions. A native C linker is also required (for example, `build-essential` on Debian/Ubuntu). The backend's `rust-toolchain.toml` pins Rust and the required formatter/linter. Run commands from the backend directory so rustup selects that toolchain. SQLx builds bundled SQLite; no separate database server or SQLx CLI is needed. Install Node.js 24.22.1 (pinned in `frontend/.node-version`) and npm 11; the tested npm version is 11.9.0. Node is needed for development and frontend builds, not to serve the compiled application.
+Use a POSIX shell with **Git**, **Python 3.11+** (including its SQLite module),
+**Docker with BuildKit**, **Docker Compose v2** and **curl**. Linux/amd64 is the
+validated runtime target. Generation alone needs only Python and Git; Docker
+builds need no host Rust or Node installation. Downloads require network access.
+
+From a directory where both `kitternel` and the new `garden-notes` destination do
+not yet exist:
 
 ```sh
-cd templates/light/frontend
-npm ci --no-audit --no-fund
-npm run build
-cd ../backend
-cargo run --locked
-```
-
-Startup checks that the frontend build exists, creates `data/kitternel.db`, applies embedded migrations, then listens on `0.0.0.0:8080`. Open `http://localhost:8080` in a browser on the same machine to see the landing page and real database greeting. From another terminal:
-
-```sh
-curl --fail http://127.0.0.1:8080/health/live
+git clone https://github.com/NickyBass/kitternel.git
+cd kitternel
+python3 scripts/create-light.py garden-notes ../garden-notes
+cd ../garden-notes
+docker build -t garden-notes:local .
+docker compose up -d --no-build --wait
 curl --fail http://127.0.0.1:8080/health/ready
 curl --fail http://127.0.0.1:8080/api/hello
 ```
 
-Expected responses, respectively:
+Open **[localhost:8080](http://localhost:8080)** on the Docker host. A fresh database
+is initialized automatically; the named volume keeps it across container recreation.
+If the repository is still private, cloning requires authorized GitHub access.
+Use a trusted reviewed commit for reproducible source selection; the clone command
+tracks the current default branch, not an immutable release artifact.
 
-```json
-{"status":"ok"}
-{"status":"ready"}
-{"message":"Hello from Kitternel Light."}
+Port busy? Use `HOST_PORT=8081 docker compose up -d --no-build --wait`, then change
+the curl/browser port to 8081. In a remote environment, localhost refers to that
+machine. For inspected TLS proxies, see the documented
+[optional build CA secret](docs/deployment/docker.md#build).
+
+Read the generated **README**, **CONTRIBUTING** and **MAINTENANCE** guides next.
+Stop with `docker compose stop`; keep the Compose project and data-volume identity
+stable. **Do not use `down --volumes` on data you want to keep.**
+
+[Generation rules and file map →](docs/development/CREATE-LIGHT.md)
+
+## Architecture
+
+<p align="center">
+  <img src="docs/assets/architecture.svg" width="720" alt="Production: browser loads React assets and calls the Axum API; one Docker container serves both and connects to a persistent SQLite volume.">
+</p>
+
+In production, the browser loads compiled React assets and calls relative `/api`
+and `/health` URLs. A single Rust process serves both and accesses SQLite through
+SQLx. The database directory is mounted separately from the application image.
+
+During development, Vite provides hot reload on port 5173 and proxies API/health
+requests to Rust on 8080. Build the frontend once before starting Rust, even when
+using Vite. Native work needs the selected Rust toolchain, C compiler/linker,
+Node and npm versions listed in [CONTRIBUTING](CONTRIBUTING.md#prerequisites-and-first-run).
+
+## Independent by design
+
+```text
+garden-notes/
+├── backend/         Rust API, migrations, tests, Cargo.lock
+├── frontend/        React UI, unit/browser tests, package-lock.json
+├── scripts/         Smoke checks, pin/security tools, backup/restore helpers
+├── .github/         Own CI and security workflows
+├── Dockerfile       Multi-stage build, single application runtime
+├── compose.yaml     Local persistent data volume
+└── *.md             README, CONTRIBUTING, MAINTENANCE, SECURITY, AGENTS
 ```
 
-Liveness checks only the HTTP process; readiness executes a database query with a one-second deadline. `/api/hello` reads the greeting from SQLite on each request, with a three-second deadline. Database failures return HTTP 503 with safe public messages. Unknown API and health routes return 404. Eligible frontend navigation requests receive the SPA entrypoint; missing assets and file paths return 404. All API endpoints are read-only; no public data mutation endpoint is provided.
+Generation starts no Git history and adds no remote. Initialize your own repository
+using the generated CONTRIBUTING guide. Maintain it without the Kitternel checkout;
+there is no automatic upstream synchronization or inherited support service.
+The [MIT notice](LICENSE) is retained in generated applications.
 
-## Runtime configuration
+## Develop and maintain
 
-| Variable | Default | Accepted values |
-| --- | --- | --- |
-| `PORT` | `8080` | Integer from 1 to 65535 |
-| `LOG_LEVEL` | `info` | `error`, `warn`, `info`, `debug`, `trace` |
-| `SHUTDOWN_TIMEOUT_SECS` | `10` | Integer from 1 to 300 |
-| `HTTP_HEADER_TIMEOUT_SECS` | `10` | Integer from 1 to 60; total time allowed to receive request headers |
-| `MAX_CONNECTIONS` | `128` | Integer from 1 to 4096; maximum active HTTP connections |
-| `SQLITE_PATH` | `data/kitternel.db` | Ordinary persistent file path; empty values, `:memory:`, and `file:` SQLite URIs are rejected |
-| `FRONTEND_DIR` | `../frontend/dist` | Directory containing the compiled `index.html` and assets |
+| Goal | Guide |
+| --- | --- |
+| Work on Kitternel, run checks or add migrations | [Contributing](CONTRIBUTING.md) |
+| Understand configuration, frontend development and SQLite behavior | [Light technical reference](docs/development/LIGHT-REFERENCE.md) |
+| Build and operate the container | [Docker reference](docs/deployment/docker.md) · [Installation walkthrough](docs/deployment/docker-installation.md) |
+| Verify a backup and restore into fresh storage | [Backup and recovery](docs/deployment/backup-restore.md) |
+| Interpret scanner findings and policy | [Security scanning](docs/development/SECURITY-SCANNING.md) |
+| Review direction and validation evidence | [Roadmap](docs/development/DOCKER-FIRST-ROADMAP.md) · [Verification](docs/development/verification.md) |
 
-Relative paths resolve from the process working directory. Example:
+Generated applications include their own **MAINTENANCE.md** with dependency updates,
+image retention, migration compatibility and recovery procedures.
 
-```sh
-PORT=8081 SQLITE_PATH=data/example.db cargo run --locked
-```
+## Alpha scope and security
 
-`templates/light/.env.example` documents values; the application does not automatically load `.env` files. Invalid configuration exits nonzero without echoing supplied values. Lifecycle logs use JSON on stdout; terminal errors use stderr. Database startup errors emit structured stage/category fields and, where applicable, the migration version and numeric SQLite code. Public messages remain generic; database contents, SQL, paths, and arbitrary database error text are not logged. Request headers, bodies, and query strings are not logged. No permissive CORS or forwarded-header trust is enabled.
+The starter currently exposes public, read-only greeting and health endpoints.
+**Authentication, authorization, sessions and CSRF defenses are absent.** Add an
+appropriate security design before building protected functionality.
 
-The HTTP/1 transport uses an explicit Tokio timer for header deadlines, accepts at most 64 headers within a 32 KiB read buffer, and bounds active connections using `MAX_CONNECTIONS`. At capacity, accepting new connections pauses until a slot is released; the operating system backlog is not an application task queue. Header deadlines are measured per header read, rather than renewed for every byte. These limits bound resources; they are not a throughput or DoS-resistance guarantee.
+The validated deployment model is **one Linux/amd64 instance**, local
+SQLite-compatible storage and serialized replacements. Windows/macOS Docker,
+ARM, Dokploy and Coolify deployments are not verified support claims. Configure
+TLS at a trusted reverse proxy, storage permissions, monitoring, off-host backups
+and periodic recovery drills for your own application.
 
-On Unix, SIGTERM or SIGINT stops accepting connections and drains in-flight requests. Draining beyond the configured deadline exits nonzero. Other platforms use Ctrl+C. The database pool closes after successful HTTP shutdown. Send signals directly to the binary and allow a stop grace period longer than the configured drain deadline.
+Security tooling reports findings; a passing gate does not prove safety. The
+current choices include a temporary upstream SQLx Git pin, a development minimatch
+override and documented runtime package risks.
+[Known risks and evidence limits](docs/releases/ALPHA-LIMITATIONS.md) records their
+scope and dates. Alpha compatibility and upgrade expectations are in the
+[release notes](docs/releases/v0.1.0-alpha.1.md).
 
-## Frontend development
+Read [SECURITY.md](SECURITY.md) before reporting a vulnerability. Generated owners
+must configure their own private contact and maintain their own dependencies.
 
-After the initial frontend build, keep the backend running on port 8080. In another terminal:
+## Contributing and license
 
-```sh
-cd templates/light/frontend
-npm run dev
-```
-
-Vite runs on port 5173 with hot reload and proxies `/api` and `/health` to the backend. It uses a strict port to avoid silently switching to a port the developer did not expect. If the backend uses another port, export `API_PROXY_TARGET`, for example:
-
-```sh
-API_PROXY_TARGET=http://127.0.0.1:8081 npm run dev
-```
-
-The client always uses relative API URLs. No broad CORS policy is required. Production serves Vite's build through Axum; no Vite or Node process is required at runtime. Rebuild the frontend to update the files served by Axum. The single landing page demonstrates loading, ready, empty-message, failure, and retry states; a client-side routing library is deliberately deferred until a real multi-page feature needs one.
-
-Only trusted compiled frontend files belong in `FRONTEND_DIR`. Keep databases, secrets, and symlinks to private files outside that directory. Axum rejects hidden files and traversal paths, reserves `/api` and `/health`, and limits SPA fallback to GET/HEAD navigation accepting HTML. Fingerprinted files under `/assets/` have immutable caching; HTML is revalidated, and API/health responses use `no-store`. The application supplies a same-origin Content Security Policy, `nosniff`, frame denial, and a restrictive referrer policy. These headers do not supply authentication or authorization.
-
-In Codex Cloud, loopback addresses belong to the cloud machine, not your computer. An interactive preview depends on capabilities exposed by your client; it is not guaranteed. Browser tests can still run inside the cloud and save screenshots without an interactive Desktop panel.
-
-## Docker
-
-For a first installation, follow the [step-by-step Docker guide](docs/deployment/docker-installation.md). It covers Windows PowerShell and Linux/macOS terminals, prerequisites, private repository access, health checks, persistent data, updates, troubleshooting, and an AI-assistance prompt. No host Rust or Node installation is required for this workflow.
-
-From the repository root:
-
-```sh
-docker build -t kitternel-light:local templates/light
-cd templates/light
-docker compose up -d --no-build
-```
-
-Compose serves the frontend and API on loopback port 8080, mounts a named SQLite volume at `/data`, and runs as UID/GID 10001 with a read-only application filesystem. If port 8080 is occupied, use `HOST_PORT=8081 docker compose up -d --no-build`. The image health check queries database readiness; SIGTERM reaches the Rust process directly.
-
-See the [Docker guide](docs/deployment/docker.md) for plain Docker commands, cloud proxy CA support, storage permissions, health semantics, and data lifecycle precautions. The guide uses a single instance on local persistent storage; it does not claim zero downtime or verified Dokploy/Coolify deployment.
-
-After building, run the container checks from the repository root:
-
-```sh
-python3 scripts/docker-smoke.py --image kitternel-light:local
-python3 scripts/sqlite-backup-smoke.py --image kitternel-light:local
-```
-
-The suite creates and cleans up only uniquely named disposable test resources, including a separate Compose project. Never delete the deployment's data volume as part of an upgrade or troubleshooting step.
-
-## SQLite operations
-
-The pool has at most four connections and a two-second acquisition timeout. Every connection enables foreign keys and a five-second busy timeout. WAL mode supports concurrent readers; `synchronous=FULL` favors durability. These conservative settings are starting points, not throughput guarantees. SQLite still permits only one writer at a time.
-
-Migrations live in `templates/light/backend/migrations/` and are embedded at compile time. Restarting the application applies pending migrations before serving traffic. Existing migrations are checksum-checked and must not be edited after deployment: add a new reviewed migration and rebuild instead. The backend build script watches the migrations directory so adding only a new SQL file also updates incremental builds. Initial seed data is inserted by migration only; restarting does not overwrite changes. Migration failures abort startup without resetting the database. Destructive schema changes require a separate reviewed procedure and a verified backup; none are included here.
-
-Use storage owned by the process user, with access restricted to authorized operators. The parent directory is created when absent, using inherited filesystem permissions; provision restrictive directory permissions/umask for real deployments. Persist the entire database directory, including WAL/SHM files, on a local filesystem. Do not share the WAL database between hosts, use network filesystems, or run overlapping app replicas. Do not commit production data.
-
-Do not copy only the live `.db` file to create a backup. Use SQLite's online backup API or a safe equivalent and verify restoration. Container operation is documented in the Docker guide. Use the [backup/restore procedure](docs/deployment/backup-restore.md) for the tested local drill; platform settings and their unverified deployment status are documented separately.
-
-## Verification
-
-From `templates/light/frontend`:
-
-```sh
-npm ci --no-audit --no-fund
-npm run typecheck
-npm run lint
-npm test
-npm run build
-```
-
-Then from `templates/light/backend`:
-
-```sh
-cargo fmt --all -- --check
-cargo clippy --locked --all-targets --all-features -- -D warnings
-cargo test --locked
-cargo build --locked
-python3 ../../../scripts/backend-smoke.py
-python3 ../../../scripts/migration-build-smoke.py
-```
-
-The process smoke suite requires Python 3 and Unix SIGTERM support, with no third-party Python packages. Each test uses temporary storage and the compiled frontend. It checks real HTTP liveness/database data, JSON lifecycle logs, clean SIGTERM exit, invalid configuration, occupied ports, invalid storage, missing frontend builds, URI rejection, and safe migration diagnostics. The incremental migration regression builds a temporary backend copy twice, adding only SQL between builds, and verifies the new migration was applied. It reuses downloaded Cargo dependencies offline, requires the normal toolchain/dependencies to be installed first, and leaves the checkout and its target directory untouched. Rust tests check SQLite behavior, bounded readiness, static-file routing, traversal rejection, caching, security headers, slow-header expiry, connection backpressure/recovery, in-flight shutdown draining, and forced shutdown deadlines.
-
-For real-browser tests, install Chromium using Playwright from `templates/light/frontend`:
-
-```sh
-npx playwright install --with-deps chromium
-python3 ../../../scripts/browser-smoke.py
-```
-
-The browser helper starts an isolated real backend on a temporary port with a temporary database, runs Playwright against the production frontend, and stops the backend afterward. No pre-existing server is needed. If system Chromium is already available, use `CHROMIUM_PATH=/path/to/chromium python3 ../../../scripts/browser-smoke.py` instead of downloading another browser. The suite verifies actual database data rendered in the page, client-route fallback, mobile layout, absence of browser errors, and an API failure state. Screenshots are saved to the ignored `frontend/test-results/` directory. `npm run test:e2e` alone targets an already running server at `BASE_URL` (default port 8080).
-
-CI runs the same frontend/Rust checks and isolated browser suite, plus a separate canonical Docker build, container/Compose smoke suite, and consistent SQLite backup/export/restore drill. The frontend temporarily overrides `minimatch` to 11.0.5 to address GHSA-g3hv-75wg-m249 in development tooling. Node 24 is supported by that release; lint/typecheck/tests/build have been exercised with the override. Remove it when the parent tools declare a compatible fixed release, then rerun verification. Cargo and npm lockfiles fix resolved dependencies; update them deliberately alongside compatibility checks. Local validation does not establish that GitHub Actions has run remotely.
-
-See [agent instructions](AGENTS.md) before making changes. Keep code and documentation in English; make focused changes with relevant tests. Existing cloud checkouts are already isolated: use them directly rather than creating worktrees unless explicitly requested.
-
-## License
-
-[MIT](LICENSE).
+Focused contributions are welcome through [CONTRIBUTING.md](CONTRIBUTING.md).
+[AGENTS.md](AGENTS.md) describes the repository's AI collaboration conventions.
+Kitternel is [MIT licensed](LICENSE); retain the notice when using generated source.
+Third-party software carries its own license obligations.
