@@ -141,7 +141,8 @@ class BackendSmoke(unittest.TestCase):
 
     def test_occupied_port_fails(self):
         with socket.socket() as reservation:
-            reservation.bind(("0.0.0.0", 0))
+            # Loopback also conflicts with the backend's wildcard IPv4 bind.
+            reservation.bind(("127.0.0.1", 0))
             reservation.listen()
             process = self.start(PORT=str(reservation.getsockname()[1]))
             _, stderr = process.communicate(timeout=5)
